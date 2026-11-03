@@ -57,8 +57,24 @@ Non-goals (v1): social features, segments/leaderboards, live tracking, iOS, watc
 ### E. History
 - Ride list, ride detail (map, charts for speed/HR/elevation, laps, splits), personal records, weekly/monthly totals.
 
+### F0. Two-phone workflow (decided 2026-11-03)
+Two Android phones, one app (same APK, two roles; a phone can be both):
+- **Ride phone** (old, handlebar): records rides, runs navigation, pulls imports from the repo, merges, shows plan.
+- **Capture phone** (daily phone, has Huawei Health + the Watch Fit 4): holds the watch screenshots and GPX files. It never records rides.
+
+The **data repo is the hub** between them:
+```
+capture phone                data repo                 ride phone
+share screenshot/GPX  ->  inbox/<device>/...   ->  pull, merge, analyse
+(Share -> Cyclocomp)       (own paths per device)    ride phone writes rides/, plan/
+```
+- Capture phone: Android **share target** ("Share -> Cyclocomp") from Gallery / Huawei Health / Files uploads the file to `inbox/`. No separate uploader app.
+- Extraction (OCR + review) runs on the **capture phone** at upload time (better screen, and it has the images), and uploads the original image **and** the parsed JSON. The ride phone then only fetches JSON and merges, so no review screen is needed on the handlebar phone.
+- Ride phone fetches `inbox/` over Wi-Fi (e.g. at home), matches imports to its own rides by start time/duration overlap, merges heart rate/calories into the ride, or creates a standalone health/ride record when nothing matches. Processed inbox items are marked done by a small marker file, never deleted.
+- Each device only writes under its own paths, so there are no merge conflicts.
+
 ### F. Health data import
-- **GPX import** (other devices/apps): parse tracks, HR/cadence extensions, dedupe against existing rides.
+- **GPX import** (from the watch, via the capture phone): parse tracks, HR/cadence extensions, match against existing rides instead of duplicating.
 - **Huawei Health photos**: pick screenshots of detail screens (workout summary, HR, sleep, resting HR, steps, SpO2, stress, HRV).
   - Pipeline: image -> text -> structured JSON -> **user confirms/edits** -> saved.
   - OCR options (decision needed): on-device **ML Kit** (offline, free, needs per-screen layout parsing) vs. a **vision LLM** (Claude API: far better on varied layouts, but images leave the phone and it costs money).
@@ -69,6 +85,9 @@ Non-goals (v1): social features, segments/leaderboards, live tracking, iOS, watc
 - Separate **private data repo** (e.g. `cyclocomp-data`), never the app repo.
 - Layout:
   ```
+  inbox/<device>/2026-11-03_workout.jpg          # uploaded by the capture phone
+  inbox/<device>/2026-11-03_workout.json         # parsed + user-confirmed values
+  inbox/<device>/2026-11-03_workout.done         # marker written by the ride phone after merging
   rides/2026/2026-11-03T0712_morning-ride.gpx
   rides/2026/2026-11-03T0712_morning-ride.json   # summary + metrics
   health/2026/2026-11-03.json                    # sleep, resting HR, HRV, steps...
@@ -112,8 +131,8 @@ app/
 | M1 | Ride recording MVP | Foreground service, GPS, live speed/distance/time, save ride, GPX export |
 | M2 | Cyclocomp UX | Configurable data pages, auto-pause, dim mode, history + ride detail |
 | M3 | BLE sensors | HR / cadence / power |
-| M4 | Data repo sync | Private repo upload, offline queue, token storage |
-| M5 | Import | GPX import + dedupe; Huawei screenshot extraction with review screen |
+| M4 | Data repo sync | Private repo upload/download, offline queue, token storage; share-target upload to `inbox/` (capture phone role) |
+| M5 | Import | GPX parse + match/merge into rides; Huawei screenshot extraction with review screen (capture phone); ride phone fetches parsed inbox and merges |
 | M6 | Load analytics | TRIMP, weekly/chronic load, recovery trends, charts |
 | M7 | Plan engine | Plan model, rule-based tuning, weekly review |
 | M8 | Navigation | GPX course follow, OSRM routing, off-route, offline tiles |
