@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+build/
+local.properties
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing material and tokens never belong in the repo
+*.jks
+*.keystore
+*.p12
+secrets.*
+.env*
+.claude/worktrees/
