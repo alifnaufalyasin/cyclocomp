@@ -12,6 +12,7 @@ data class TrackPoint(
     val ele: Double? = null,
     val accuracyM: Float? = null,
     val speedMps: Float? = null,
+    val hr: Int? = null,
 )
 
 object Geo {
