@@ -49,6 +49,7 @@ fun RideScreen(
     pages: List<List<DataField>>,
     onOpenHistory: () -> Unit,
     onEditPages: () -> Unit,
+    onOpenSync: () -> Unit,
 ) {
     val context = LocalContext.current
     val snap by RideRecorder.snapshot.collectAsState()
@@ -149,6 +150,7 @@ fun RideScreen(
             } else {
                 TextButton(onClick = onOpenHistory) { Text("History") }
                 TextButton(onClick = onEditPages) { Text("Edit pages") }
+                TextButton(onClick = onOpenSync) { Text("Sync") }
             }
         }
 
