@@ -53,4 +53,6 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
     testImplementation("junit:junit:4.13.2")
+    // Android's org.json is a stub on the JVM ("not mocked"); the sync tests need the real one.
+    testImplementation("org.json:json:20231013")
 }

@@ -34,6 +34,7 @@ private sealed interface Screen {
     data object Ride : Screen
     data object History : Screen
     data object EditPages : Screen
+    data object Sync : Screen
     data class Detail(val path: String) : Screen
 }
 
@@ -56,7 +57,9 @@ private fun AppNav() {
                 screen = Screen.History
             },
             onEditPages = { screen = Screen.EditPages },
+            onOpenSync = { screen = Screen.Sync },
         )
+        Screen.Sync -> SyncScreen(onBack = { screen = Screen.Ride })
         Screen.History -> HistoryScreen(
             rides = rides,
             onOpen = { screen = Screen.Detail(it.absolutePath) },
