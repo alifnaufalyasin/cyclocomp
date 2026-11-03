@@ -47,6 +47,26 @@ class GitHubDataRepo(
         }
     }
 
+    /**
+     * Replaces a file's content (or creates it). Only for paths this phone owns, e.g. a ride it
+     * re-uploads after merging heart rate; the inbox stays create-only.
+     */
+    fun putOrUpdate(path: String, bytes: ByteArray, message: String) {
+        val current = http.request("GET", contentsUrl(path), headers(), null)
+        val sha = when (current.code) {
+            200 -> JSONObject(current.text).optString("sha").ifEmpty { null }
+            404 -> null
+            else -> throw failure(current)
+        }
+        val body = JSONObject()
+            .put("message", message)
+            .put("content", Base64.getEncoder().encodeToString(bytes))
+            .apply { if (sha != null) put("sha", sha) }
+            .toString().toByteArray(Charsets.UTF_8)
+        val r = http.request("PUT", contentsUrl(path), headers(), body)
+        if (r.code != 200 && r.code != 201) throw failure(r)
+    }
+
     fun list(dir: String): List<RepoEntry> {
         val r = http.request("GET", contentsUrl(dir), headers(), null)
         if (r.code == 404) return emptyList()
