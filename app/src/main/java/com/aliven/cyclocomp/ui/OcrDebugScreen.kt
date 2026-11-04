@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aliven.cyclocomp.core.HuaweiWorkoutParser
 import com.aliven.cyclocomp.core.OcrLayout
 import com.aliven.cyclocomp.core.OcrLine
 import com.google.mlkit.vision.common.InputImage
@@ -99,8 +100,14 @@ private fun recognise(context: Context, uri: Uri, done: (String) -> Unit) {
                     line.boundingBox?.let { OcrLine(line.text, it.left, it.top, it.right, it.bottom) }
                 }
             }
+            val parsed = try {
+                HuaweiWorkoutParser.parse(HuaweiWorkoutParser.fromLines(lines)).describe()
+            } catch (e: Exception) {
+                "Could not interpret this screenshot: ${e.message}"
+            }
             done(
                 "Image ${image.width}x${image.height}, ${lines.size} lines\n\n" +
+                    "== Read as Huawei workout ==\n" + parsed + "\n\n" +
                     "== By row (y = pixel position, | separates cells) ==\n" +
                     OcrLayout.formatRows(lines) +
                     "\n\n== Raw text, recognizer order ==\n" + result.text
