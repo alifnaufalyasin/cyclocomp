@@ -33,6 +33,7 @@ import com.aliven.cyclocomp.core.RideSeriesBuilder
 import com.aliven.cyclocomp.core.RideSummaries
 import com.aliven.cyclocomp.core.RideSummary
 import com.aliven.cyclocomp.sync.StoredWorkout
+import com.aliven.cyclocomp.sync.SyncState
 import com.aliven.cyclocomp.sync.WorkoutStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -109,11 +110,13 @@ fun DetailScreen(file: File, onBack: () -> Unit, onDeleted: () -> Unit) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete this ride?") },
-            text = { Text("${RideNames.display(file.name)} will be removed from this phone. This cannot be undone.") },
+            text = { Text("${RideNames.display(file.name)} will be removed from this phone and, at the next sync, from your other phones. A copy stays in the repo's history.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
                     file.delete()
+                    // Remember the deletion so a sync does not bring the ride back, and so other phones drop it too.
+                    SyncState.recordDeletion(context, file.name)
                     onDeleted()
                 }) { Text("Delete") }
             },

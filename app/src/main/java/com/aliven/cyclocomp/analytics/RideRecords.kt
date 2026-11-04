@@ -20,8 +20,12 @@ object TrainingSettings {
     fun maxHr(context: Context): Int =
         prefs(context).getInt("max_hr", TrainingStats.DEFAULT_MAX_HR)
 
-    fun save(context: Context, restHr: Int, maxHr: Int) {
-        prefs(context).edit().putInt("rest_hr", restHr).putInt("max_hr", maxHr).apply()
+    /** 0 until the user saves their own values; used to decide which phone's settings are newer. */
+    fun updatedMs(context: Context): Long = prefs(context).getLong("updated_ms", 0L)
+
+    fun save(context: Context, restHr: Int, maxHr: Int, updatedMs: Long = System.currentTimeMillis()) {
+        prefs(context).edit()
+            .putInt("rest_hr", restHr).putInt("max_hr", maxHr).putLong("updated_ms", updatedMs).apply()
     }
 
     /** Resting below max, both in a plausible human range. */

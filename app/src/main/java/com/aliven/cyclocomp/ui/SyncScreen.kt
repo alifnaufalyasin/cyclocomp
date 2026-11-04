@@ -25,12 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aliven.cyclocomp.recording.RideRecorder
-import com.aliven.cyclocomp.sync.InboxImporter
+import com.aliven.cyclocomp.sync.FullSync
 import com.aliven.cyclocomp.sync.RepoPaths
-import com.aliven.cyclocomp.sync.RideSync
 import com.aliven.cyclocomp.sync.SyncSettings
-import com.aliven.cyclocomp.sync.WorkoutStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -113,43 +110,22 @@ fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot:
                 save()
                 scope.launch {
                     busy = true
-                    status = "Uploading rides…"
+                    status = "Syncing…"
                     status = withContext(Dispatchers.IO) {
                         val cfg = SyncSettings.load(context)
                         if (cfg == null) "Fill in repo, phone name and token first."
-                        else RideSync.describe(
-                            RideSync.uploadRides(
-                                context, SyncSettings.repo(cfg),
-                                RideRecorder.rides() + WorkoutStore.files(RideRecorder.ridesDir()),
-                            )
-                        )
+                        else FullSync.run(context, cfg).joinToString("\n")
                     }
                     busy = false
                 }
             },
             enabled = !busy, modifier = Modifier.fillMaxWidth(),
-        ) { Text("Upload rides now") }
-
-        OutlinedButton(
-            onClick = {
-                save()
-                scope.launch {
-                    busy = true
-                    status = "Checking inbox…"
-                    status = withContext(Dispatchers.IO) {
-                        val cfg = SyncSettings.load(context)
-                        if (cfg == null) "Fill in repo, phone name and token first."
-                        else try {
-                            InboxImporter.run(context, SyncSettings.repo(cfg)).joinToString("\n")
-                        } catch (e: Exception) {
-                            e.message ?: "Import failed"
-                        }
-                    }
-                    busy = false
-                }
-            },
-            enabled = !busy, modifier = Modifier.fillMaxWidth(),
-        ) { Text("Import watch GPX from inbox") }
+        ) { Text("Sync now (download · import · upload)") }
+        Text(
+            "Works the same on every phone: it downloads rides and workouts from the repo, imports watch " +
+                "GPX and screenshot values waiting in the inbox, and uploads anything the repo is missing.",
+            fontSize = 12.sp,
+        )
 
         if (hasToken) {
             TextButton(onClick = {

@@ -5,7 +5,8 @@ import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.Base64
 
-class RepoEntry(val name: String, val type: String, val path: String)
+/** [sha] is the git blob id GitHub reports for a file; empty for directories. */
+class RepoEntry(val name: String, val type: String, val path: String, val sha: String = "")
 
 enum class PutResult { CREATED, EXISTS }
 
@@ -76,7 +77,7 @@ class GitHubDataRepo(
         val arr = JSONArray(trimmed)
         return List(arr.length()) {
             val o = arr.getJSONObject(it)
-            RepoEntry(o.getString("name"), o.getString("type"), o.getString("path"))
+            RepoEntry(o.getString("name"), o.getString("type"), o.getString("path"), o.optString("sha"))
         }
     }
 

@@ -57,10 +57,18 @@ Non-goals (v1): social features, segments/leaderboards, live tracking, iOS, watc
 ### E. History
 - Ride list, ride detail (map, charts for speed/HR/elevation, laps, splits), personal records, weekly/monthly totals.
 
-### F0. Two-phone workflow (decided 2026-11-03)
-Two Android phones, one app (same APK, two roles; a phone can be both):
-- **Ride phone** (old, handlebar): records rides, runs navigation, pulls imports from the repo, merges, shows plan.
-- **Capture phone** (daily phone, has Huawei Health + the Watch Fit 4): holds the watch screenshots and GPX files. It never records rides.
+### F0. Two-phone workflow (decided 2026-11-03, revised 2026-11-05: symmetric)
+Two Android phones, one app, **same data and same features on both**. Any phone can record a ride, share watch screenshots/GPX into the inbox, import them, and show the full history. Typical use is "ride on A, import on B" but "ride and import on B" works equally.
+
+**Sync now** (one button) runs the same steps on every phone, in this order:
+1. pull rides, screenshot workouts and deletions from the repo (a ride missing here is downloaded; when both have it, the copy with more heart-rate samples wins),
+2. import the watch GPX / screenshot values waiting in `inbox/` (the importer scans every phone's inbox folder; a `.done` marker stops a second phone repeating it),
+3. upload whatever the repo is missing, judged from the repo's real file listing, and re-upload rides that gained heart rate,
+4. share the heart-rate settings (newest save wins). Page layouts, the token and the phone name stay per phone.
+
+Deleting a ride writes a `<ride>.gpx.deleted` marker so other phones drop it too and nobody pulls it back; the GPX stays in the repo history.
+
+The older "ride phone / capture phone" description below is the original design; the roles are now just habits, not restrictions.
 
 The **data repo is the hub** between them:
 ```
