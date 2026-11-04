@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun SyncScreen(onBack: () -> Unit) {
+fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var slug by remember { mutableStateOf(SyncSettings.slug(context)) }
@@ -156,6 +156,10 @@ fun SyncScreen(onBack: () -> Unit) {
         }
 
         status?.let { Text(it) }
+
+        OutlinedButton(onClick = onOpenOcrDebug, modifier = Modifier.fillMaxWidth()) {
+            Text("Read screenshot (debug)")
+        }
 
         Text(
             "To send Huawei Health screenshots or a GPX from another phone: open the file, tap Share, " +

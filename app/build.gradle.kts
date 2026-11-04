@@ -51,6 +51,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.foundation:foundation")
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    // On-device text recognition with the model bundled in the APK: works offline, no images leave the phone.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 
     testImplementation("junit:junit:4.13.2")
     // Android's org.json is a stub on the JVM ("not mocked"); the sync tests need the real one.
