@@ -43,11 +43,12 @@ fun rememberSummary(file: File): RideSummary? {
 }
 
 @Composable
-fun HistoryScreen(rides: List<File>, onOpen: (File) -> Unit, onBack: () -> Unit) {
+fun HistoryScreen(rides: List<File>, onOpen: (File) -> Unit, onOpenProgress: () -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onBack) { Text("Back") }
             Text("Ride history", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            TextButton(onClick = onOpenProgress) { Text("Progress") }
         }
         if (rides.isEmpty()) {
             Text("No rides yet. Record one from the ride screen.")
