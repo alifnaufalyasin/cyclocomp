@@ -73,6 +73,11 @@ object RideSeriesBuilder {
 }
 
 object RideNames {
+    /** File-name stamp for a ride that started at [startMs], e.g. `20261103_064238`. */
+    fun stamp(startMs: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
+        java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").withZone(zone)
+            .format(java.time.Instant.ofEpochMilli(startMs))
+
     private val pattern = Regex("""^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})\d{2}\.gpx$""")
 
     /** `20261103_064238.gpx` -> `2026-11-03 06:42`; anything else is shown unchanged. */

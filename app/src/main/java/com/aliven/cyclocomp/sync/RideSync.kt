@@ -36,28 +36,45 @@ object RideSummaryJson {
 object RideSync {
     private const val PREFS = "cyclocomp_sync_state"
     private const val KEY = "uploaded_rides"
+    private const val DIRTY = "dirty_rides"
+
+    /** A ride changed after upload (heart rate merged in): the next sync replaces the repo copy. */
+    fun markDirty(context: Context, rideName: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val dirty = prefs.getStringSet(DIRTY, emptySet())!!.toMutableSet().apply { add(rideName) }
+        prefs.edit().putStringSet(DIRTY, dirty).apply()
+    }
 
     /** Uploads each saved ride (GPX + summary JSON) to `rides/<year>/`. Safe to re-run: done rides are skipped. */
     fun uploadRides(context: Context, repo: GitHubDataRepo, rides: List<File>): SyncReport {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val done = prefs.getStringSet(KEY, emptySet())!!.toMutableSet()
+        val dirty = prefs.getStringSet(DIRTY, emptySet())!!.toMutableSet()
         var uploaded = 0
         var existed = 0
         val failed = mutableListOf<String>()
 
         for (file in rides) {
-            if (file.name in done) continue
+            val replace = file.name in dirty
+            if (file.name in done && !replace) continue
             try {
                 val year = file.name.take(4).takeIf { y -> y.all { it.isDigit() } } ?: "unknown"
-                val gpxResult = repo.putNew("rides/$year/${file.name}", file.readBytes(), "Add ride ${file.name}")
                 val summary = file.inputStream().use { RideSummaries.summarize(GpxParser.parse(it)) }
-                if (summary != null) {
-                    val json = RideSummaryJson.toJson(file.name, summary).toByteArray(Charsets.UTF_8)
-                    repo.putNew("rides/$year/${file.nameWithoutExtension}.json", json, "Add summary ${file.name}")
+                val json = summary?.let { RideSummaryJson.toJson(file.name, it).toByteArray(Charsets.UTF_8) }
+                val gpxPath = "rides/$year/${file.name}"
+                val jsonPath = "rides/$year/${file.nameWithoutExtension}.json"
+                if (replace) {
+                    repo.putOrUpdate(gpxPath, file.readBytes(), "Update ride ${file.name}")
+                    if (json != null) repo.putOrUpdate(jsonPath, json, "Update summary ${file.name}")
+                    uploaded++
+                } else {
+                    val gpxResult = repo.putNew(gpxPath, file.readBytes(), "Add ride ${file.name}")
+                    if (json != null) repo.putNew(jsonPath, json, "Add summary ${file.name}")
+                    if (gpxResult == PutResult.CREATED) uploaded++ else existed++
                 }
-                if (gpxResult == PutResult.CREATED) uploaded++ else existed++
                 done.add(file.name)
-                prefs.edit().putStringSet(KEY, done).apply()
+                dirty.remove(file.name)
+                prefs.edit().putStringSet(KEY, done).putStringSet(DIRTY, dirty).apply()
             } catch (e: GitHubException) {
                 failed.add("${file.name}: ${e.message}")
                 // Auth/permission problems affect every file; stop instead of repeating the failure.
