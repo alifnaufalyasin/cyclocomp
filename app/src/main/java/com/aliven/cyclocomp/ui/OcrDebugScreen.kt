@@ -32,10 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aliven.cyclocomp.core.HuaweiWorkoutParser
 import com.aliven.cyclocomp.core.OcrLayout
-import com.aliven.cyclocomp.core.OcrLine
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 /**
  * Debug tool for M5b: shows what on-device text recognition makes of a screenshot, so the
@@ -86,34 +82,24 @@ fun OcrDebugScreen(onBack: () -> Unit) {
 }
 
 private fun recognise(context: Context, uri: Uri, done: (String) -> Unit) {
-    val image = try {
-        InputImage.fromFilePath(context, uri)
-    } catch (e: Exception) {
-        done("Could not open the image: ${e.message}")
-        return
-    }
-    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    recognizer.process(image)
-        .addOnSuccessListener { result ->
-            val lines = result.textBlocks.flatMap { block ->
-                block.lines.mapNotNull { line ->
-                    line.boundingBox?.let { OcrLine(line.text, it.left, it.top, it.right, it.bottom) }
-                }
-            }
-            val parsed = try {
-                HuaweiWorkoutParser.parse(HuaweiWorkoutParser.fromLines(lines)).describe()
-            } catch (e: Exception) {
-                "Could not interpret this screenshot: ${e.message}"
-            }
-            done(
-                "Image ${image.width}x${image.height}, ${lines.size} lines\n\n" +
-                    "== Read as Huawei workout ==\n" + parsed + "\n\n" +
-                    "== By row (y = pixel position, | separates cells) ==\n" +
-                    OcrLayout.formatRows(lines) +
-                    "\n\n== Raw text, recognizer order ==\n" + result.text
-            )
+    recogniseImage(context, uri) { r ->
+        if (r.error != null) {
+            done(r.error)
+            return@recogniseImage
         }
-        .addOnFailureListener { e -> done("Text recognition failed: ${e.message}") }
+        val parsed = try {
+            HuaweiWorkoutParser.parse(HuaweiWorkoutParser.fromLines(r.lines)).describe()
+        } catch (e: Exception) {
+            "Could not interpret this screenshot: ${e.message}"
+        }
+        done(
+            "Image ${r.width}x${r.height}, ${r.lines.size} lines\n\n" +
+                "== Read as Huawei workout ==\n" + parsed + "\n\n" +
+                "== By row (y = pixel position, | separates cells) ==\n" +
+                OcrLayout.formatRows(r.lines) +
+                "\n\n== Raw text, recognizer order ==\n" + r.rawText
+        )
+    }
 }
 
 private fun copy(context: Context, text: String) {

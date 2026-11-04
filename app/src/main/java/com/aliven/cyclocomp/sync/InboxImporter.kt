@@ -32,7 +32,8 @@ object InboxImporter {
             val entries = repo.list(device.path)
             val names = entries.map { it.name }.toSet()
             val pending = entries.filter {
-                it.type == "file" && it.name.endsWith(".gpx", ignoreCase = true) && "${it.name}.done" !in names
+                it.type == "file" && "${it.name}.done" !in names &&
+                    (it.name.endsWith(".gpx", ignoreCase = true) || it.name.endsWith(WorkoutJson.SUFFIX))
             }
             for (entry in pending) {
                 try {
@@ -57,6 +58,7 @@ object InboxImporter {
         local: MutableList<RideCandidate>,
     ): String {
         val bytes = repo.getRaw(entry.path) ?: return "${entry.name}: disappeared from the repo"
+        if (entry.name.endsWith(WorkoutJson.SUFFIX)) return handleWorkout(repo, entry, bytes, ridesDir)
         val watch = GpxParser.parse(bytes.inputStream())
 
         return when (val decision = ImportPlanner.decide(local, watch)) {
@@ -95,6 +97,25 @@ object InboxImporter {
                 "${entry.name}: imported as new ride ${target.name}"
             }
         }
+    }
+
+    /**
+     * A confirmed screenshot workout is stored beside the rides. It is matched to a ride later
+     * (at display time, by start and distance), so it does not matter which of the GPX and the
+     * screenshot reaches this phone first.
+     */
+    private fun handleWorkout(repo: GitHubDataRepo, entry: RepoEntry, bytes: ByteArray, ridesDir: File): String {
+        val stored = WorkoutJson.fromJson(bytes.toString(Charsets.UTF_8))
+            ?: return "${entry.name}: not a workout file this app wrote; left in inbox"
+        val start = stored.startEpochMs ?: return "${entry.name}: no start time in the file; left in inbox"
+        val target = File(ridesDir, RideNames.stamp(start) + WorkoutStore.EXTENSION_SUFFIX)
+        if (target.exists()) {
+            markDone(repo, entry, "already stored as ${target.name}")
+            return "${entry.name}: already stored as ${target.name}, marked done"
+        }
+        writeAtomically(target, bytes.toString(Charsets.UTF_8))
+        markDone(repo, entry, "stored as ${target.name}")
+        return "${entry.name}: stored workout ${target.name} (calories, zones, recovery)"
     }
 
     private fun markDone(repo: GitHubDataRepo, entry: RepoEntry, note: String) {

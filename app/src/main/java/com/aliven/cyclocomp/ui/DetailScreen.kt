@@ -32,11 +32,13 @@ import com.aliven.cyclocomp.core.RideSeries
 import com.aliven.cyclocomp.core.RideSeriesBuilder
 import com.aliven.cyclocomp.core.RideSummaries
 import com.aliven.cyclocomp.core.RideSummary
+import com.aliven.cyclocomp.sync.StoredWorkout
+import com.aliven.cyclocomp.sync.WorkoutStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private class Loaded(val summary: RideSummary?, val series: RideSeries)
+private class Loaded(val summary: RideSummary?, val series: RideSeries, val workout: StoredWorkout?)
 
 @Composable
 fun DetailScreen(file: File, onBack: () -> Unit, onDeleted: () -> Unit) {
@@ -46,7 +48,11 @@ fun DetailScreen(file: File, onBack: () -> Unit, onDeleted: () -> Unit) {
         value = withContext(Dispatchers.IO) {
             try {
                 val segments = file.inputStream().use { GpxParser.parse(it) }
-                Loaded(RideSummaries.summarize(segments), RideSeriesBuilder.build(segments))
+                val summary = RideSummaries.summarize(segments)
+                val workout = summary?.let {
+                    file.parentFile?.let { dir -> WorkoutStore.findFor(dir, it.startMs, it.distanceM) }
+                }
+                Loaded(summary, RideSeriesBuilder.build(segments), workout)
             } catch (e: Exception) {
                 null
             }
@@ -73,6 +79,20 @@ fun DetailScreen(file: File, onBack: () -> Unit, onDeleted: () -> Unit) {
             Stat("Avg / max speed", "${Format.kmh(s.avgSpeedMps)} / ${Format.kmh(s.maxSpeedMps)} km/h")
             Stat("Ascent / descent", "${Format.meters(s.ascentM)} / ${Format.meters(s.descentM)} m")
             if (s.avgHr != null) Stat("Heart rate avg / max", "${s.avgHr} / ${s.maxHr} bpm")
+
+            l.workout?.workout?.let { w ->
+                Text("From Huawei Health", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                w.kcal?.let { Stat("Calories", "$it kcal") }
+                if (s.avgHr == null && w.avgHr != null) Stat("Heart rate avg / max", "${w.avgHr} / ${w.maxHr ?: "—"} bpm")
+                if (w.zoneMinutes.isNotEmpty()) {
+                    Stat("Time in zones (min)", w.zoneMinutes.entries.joinToString("  ") { "${it.key.take(4)} ${it.value}" })
+                }
+                if (w.hrRecoveryStart != null && w.hrRecoveryEnd != null) {
+                    Stat("HR recovery (1–2 min)", "${w.hrRecoveryStart} → ${w.hrRecoveryEnd} bpm")
+                }
+                w.aerobicStress?.let { Stat("Aerobic training stress", "$it ${w.stressLevel ?: ""}".trim()) }
+                w.recoveryHours?.let { Stat("Recovery time", "$it h") }
+            }
 
             LineChart("Speed", "km/h", l.series.speedKmh)
             LineChart("Elevation", "m", l.series.elevationM)

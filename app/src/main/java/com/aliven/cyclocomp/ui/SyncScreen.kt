@@ -30,12 +30,13 @@ import com.aliven.cyclocomp.sync.InboxImporter
 import com.aliven.cyclocomp.sync.RepoPaths
 import com.aliven.cyclocomp.sync.RideSync
 import com.aliven.cyclocomp.sync.SyncSettings
+import com.aliven.cyclocomp.sync.WorkoutStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit) {
+fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var slug by remember { mutableStateOf(SyncSettings.slug(context)) }
@@ -117,7 +118,10 @@ fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit) {
                         val cfg = SyncSettings.load(context)
                         if (cfg == null) "Fill in repo, phone name and token first."
                         else RideSync.describe(
-                            RideSync.uploadRides(context, SyncSettings.repo(cfg), RideRecorder.rides())
+                            RideSync.uploadRides(
+                                context, SyncSettings.repo(cfg),
+                                RideRecorder.rides() + WorkoutStore.files(RideRecorder.ridesDir()),
+                            )
                         )
                     }
                     busy = false
@@ -156,6 +160,10 @@ fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit) {
         }
 
         status?.let { Text(it) }
+
+        Button(onClick = onOpenScreenshot, modifier = Modifier.fillMaxWidth()) {
+            Text("Import Huawei screenshot (this phone → inbox)")
+        }
 
         OutlinedButton(onClick = onOpenOcrDebug, modifier = Modifier.fillMaxWidth()) {
             Text("Read screenshot (debug)")
