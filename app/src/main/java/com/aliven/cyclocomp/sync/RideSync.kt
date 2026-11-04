@@ -59,6 +59,14 @@ object RideSync {
             if (file.name in done && !replace) continue
             try {
                 val year = file.name.take(4).takeIf { y -> y.all { it.isDigit() } } ?: "unknown"
+                if (file.name.endsWith(WorkoutStore.EXTENSION_SUFFIX)) {
+                    // Screenshot workout stored beside the rides: uploaded as is, never overwritten.
+                    val r = repo.putNew("rides/$year/${file.name}", file.readBytes(), "Add workout ${file.name}")
+                    if (r == PutResult.CREATED) uploaded++ else existed++
+                    done.add(file.name)
+                    prefs.edit().putStringSet(KEY, done).apply()
+                    continue
+                }
                 val summary = file.inputStream().use { RideSummaries.summarize(GpxParser.parse(it)) }
                 val json = summary?.let { RideSummaryJson.toJson(file.name, it).toByteArray(Charsets.UTF_8) }
                 val gpxPath = "rides/$year/${file.name}"
