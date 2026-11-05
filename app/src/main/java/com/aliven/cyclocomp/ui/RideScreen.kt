@@ -39,6 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aliven.cyclocomp.core.Format
 import com.aliven.cyclocomp.core.LatLon
+import com.aliven.cyclocomp.core.TurnText
+import com.aliven.cyclocomp.nav.NavSession
+import com.aliven.cyclocomp.nav.NavState
 import com.aliven.cyclocomp.map.LiveMap
 import com.aliven.cyclocomp.map.MapSettings
 import com.aliven.cyclocomp.map.MapSupport
@@ -189,7 +192,9 @@ fun RideScreen(
                 val track = remember(snap.pointCount) { RideRecorder.trackSnapshot() }
                 val lat = snap.lat
                 val lon = snap.lon
+                val nav by NavSession.state.collectAsState()
                 Column(Modifier.fillMaxSize()) {
+                    NavCard(nav, snap.avgSpeedMps, Modifier.fillMaxWidth())
                     LiveMap(
                         track = track,
                         position = if (lat != null && lon != null) LatLon(lat, lon) else null,
@@ -197,6 +202,9 @@ fun RideScreen(
                         follow = follow,
                         onUserMoved = { follow = false },
                         modifier = Modifier.weight(1f).fillMaxWidth(),
+                        plannedRoute = nav.route?.points.orEmpty(),
+                        destination = nav.destination,
+                        onLongPress = { NavSession.setDestination(context, it) },
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         TextButton(onClick = { pagerScope.launch { pagerState.animateScrollToPage(0) } }) {
@@ -260,5 +268,35 @@ private fun DataPage(fields: List<DataField>, snap: RideSnapshot) {
                 Text(if (field.unit.isEmpty()) field.label else "${field.label} (${field.unit})", fontSize = 16.sp)
             }
         }
+    }
+}
+
+/** Shows the next maneuver and what is left of the route; hidden until a destination is set. */
+@Composable
+private fun NavCard(nav: NavState, avgSpeedMps: Double, modifier: Modifier = Modifier) {
+    if (nav.destination == null) return
+    Column(modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val route = nav.route
+        val p = nav.progress
+        when {
+            nav.arrived -> Text("You have arrived", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            route != null && p != null -> {
+                val next = route.steps.getOrNull(p.stepIndex + 1)
+                val text = if (next == null) "Arrive at your destination" else TurnText.of(next)
+                Text(
+                    "${TurnText.distance(p.toNextManeuverM)} · $text",
+                    fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "${TurnText.distance(p.remainingM)} left · about ${TurnText.etaMinutes(p.remainingM, avgSpeedMps)} min" +
+                        if (nav.loading) " · rerouting…" else "",
+                    fontSize = 14.sp,
+                )
+            }
+            nav.loading -> Text("Finding a route…", fontSize = 16.sp)
+            else -> Text(nav.message ?: "Destination set. The route is found once GPS has a fix.", fontSize = 14.sp)
+        }
+        nav.message?.let { if (route != null || nav.arrived) Text(it, fontSize = 12.sp) }
+        TextButton(onClick = { NavSession.clear() }) { Text("Clear destination") }
     }
 }
