@@ -28,8 +28,12 @@ import androidx.compose.ui.unit.sp
 import com.aliven.cyclocomp.core.Format
 import com.aliven.cyclocomp.core.GpxParser
 import com.aliven.cyclocomp.core.RideNames
+import com.aliven.cyclocomp.core.LatLon
 import com.aliven.cyclocomp.core.RideSeries
 import com.aliven.cyclocomp.core.RideSeriesBuilder
+import com.aliven.cyclocomp.core.RouteShape
+import com.aliven.cyclocomp.map.RouteMap
+import androidx.compose.foundation.layout.height
 import com.aliven.cyclocomp.core.RideSummaries
 import com.aliven.cyclocomp.core.RideSummary
 import com.aliven.cyclocomp.sync.StoredWorkout
@@ -38,7 +42,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private class Loaded(val summary: RideSummary?, val series: RideSeries, val workout: StoredWorkout?)
+private class Loaded(
+    val summary: RideSummary?,
+    val series: RideSeries,
+    val workout: StoredWorkout?,
+    val route: List<LatLon>,
+)
 
 @Composable
 fun DetailScreen(file: File, onBack: () -> Unit, onDeleted: () -> Unit) {
@@ -52,7 +61,7 @@ fun DetailScreen(file: File, onBack: () -> Unit, onDeleted: () -> Unit) {
                 val workout = summary?.let {
                     file.parentFile?.let { dir -> WorkoutStore.findFor(dir, it.startMs, it.distanceM) }
                 }
-                Loaded(summary, RideSeriesBuilder.build(segments), workout)
+                Loaded(summary, RideSeriesBuilder.build(segments), workout, RouteShape.points(segments))
             } catch (e: Exception) {
                 null
             }
@@ -73,6 +82,9 @@ fun DetailScreen(file: File, onBack: () -> Unit, onDeleted: () -> Unit) {
         if (l == null || s == null) {
             Text("Loading… (or this file could not be read)")
         } else {
+            if (l.route.size >= 2) {
+                RouteMap(l.route, Modifier.fillMaxWidth().height(240.dp))
+            }
             Stat("Distance", "${Format.km(s.distanceM)} km")
             Stat("Moving time", Format.duration(s.movingMs))
             Stat("Elapsed time", Format.duration(s.elapsedMs))

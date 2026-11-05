@@ -1,5 +1,9 @@
 package com.aliven.cyclocomp.ui
 
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.platform.LocalContext
+import com.aliven.cyclocomp.core.TileTemplate
+import com.aliven.cyclocomp.map.MapSettings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -28,14 +32,42 @@ import androidx.compose.ui.unit.sp
 /** Choose which data fields appear on each swipeable ride-screen page. */
 @Composable
 fun PagesEditor(initial: List<List<DataField>>, onSave: (List<List<DataField>>) -> Unit, onCancel: () -> Unit) {
+    val context = LocalContext.current
     var pages by remember { mutableStateOf(initial) }
+    var showMap by remember { mutableStateOf(MapSettings.showMapPage(context)) }
+    var tileUrl by remember { mutableStateOf(MapSettings.tileTemplate(context)) }
+    val tileUrlBad = tileUrl.isNotBlank() && !TileTemplate.isValid(tileUrl)
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onCancel) { Text("Cancel") }
-            Button(onClick = { onSave(pages.filter { it.isNotEmpty() }.ifEmpty { Pages.DEFAULT }) }) { Text("Save") }
+            Button(
+                enabled = !tileUrlBad,
+                onClick = {
+                    MapSettings.save(context, showMap, tileUrl)
+                    onSave(pages.filter { it.isNotEmpty() }.ifEmpty { Pages.DEFAULT })
+                },
+            ) { Text("Save") }
         }
         Text("Up to ${Pages.MAX_FIELDS_PER_PAGE} fields per page. Empty pages are dropped.", fontSize = 14.sp)
+
+        Row(Modifier.fillMaxWidth().clickable { showMap = !showMap }, verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = showMap, onCheckedChange = { showMap = it })
+            Text("Show the map as the last page")
+        }
+        OutlinedTextField(
+            value = tileUrl, onValueChange = { tileUrl = it }, singleLine = true,
+            label = { Text("Own tile server (optional)") },
+            placeholder = { Text("https://…/{z}/{x}/{y}.png") },
+            supportingText = {
+                Text(
+                    if (tileUrlBad) "Needs https:// and {z}, {x}, {y}"
+                    else "Empty = OpenStreetMap standard tiles (fine for personal use; no bulk offline download)"
+                )
+            },
+            isError = tileUrlBad,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(pages) { pageIndex, page ->

@@ -51,6 +51,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.foundation:foundation")
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    // OpenStreetMap map view, no API key; the same library the ESP32 companion app uses.
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
     // On-device text recognition with the model bundled in the APK: works offline, no images leave the phone.
     implementation("com.google.mlkit:text-recognition:16.0.1")
 

@@ -38,6 +38,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aliven.cyclocomp.core.Format
+import com.aliven.cyclocomp.core.LatLon
+import com.aliven.cyclocomp.map.LiveMap
+import com.aliven.cyclocomp.map.MapSettings
+import com.aliven.cyclocomp.map.MapSupport
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.aliven.cyclocomp.recording.RideRecorder
 import com.aliven.cyclocomp.recording.RideService
 import com.aliven.cyclocomp.recording.RideSnapshot
@@ -154,13 +160,58 @@ fun RideScreen(
             }
         }
 
-        val pagerState = rememberPagerState(pageCount = { pages.size })
-        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth()) { index ->
-            DataPage(pages[index], snap)
+        // The map is one more swipeable page after the data pages (can be switched off in Edit pages).
+        val showMap = MapSettings.showMapPage(context)
+        val pageCount = pages.size + if (showMap) 1 else 0
+        val mapIndex = if (showMap) pages.size else -1
+        val pagerState = rememberPagerState(pageCount = { pageCount })
+        val pagerScope = rememberCoroutineScope()
+        var follow by remember { mutableStateOf(true) }
+        val fallbackCenter = remember { MapSettings.lastPosition(context) ?: MapSupport.DEFAULT_CENTER }
+
+        // Remember where the ride ended so the map opens there next time.
+        LaunchedEffect(snap.status, snap.pointCount) {
+            val lat = snap.lat
+            val lon = snap.lon
+            if (snap.status == RideStatus.IDLE && lat != null && lon != null) {
+                MapSettings.saveLastPosition(context, LatLon(lat, lon))
+            }
         }
-        if (pages.size > 1) {
+
+        // On the map page horizontal drags belong to the map, so paging is off there; the buttons
+        // under the map lead back to the data pages.
+        HorizontalPager(
+            state = pagerState,
+            userScrollEnabled = pagerState.currentPage != mapIndex,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { index ->
+            if (index == mapIndex) {
+                val track = remember(snap.pointCount) { RideRecorder.trackSnapshot() }
+                val lat = snap.lat
+                val lon = snap.lon
+                Column(Modifier.fillMaxSize()) {
+                    LiveMap(
+                        track = track,
+                        position = if (lat != null && lon != null) LatLon(lat, lon) else null,
+                        fallbackCenter = fallbackCenter,
+                        follow = follow,
+                        onUserMoved = { follow = false },
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = { pagerScope.launch { pagerState.animateScrollToPage(0) } }) {
+                            Text("‹ Data")
+                        }
+                        TextButton(onClick = { follow = true }, enabled = !follow) { Text("Recenter") }
+                    }
+                }
+            } else {
+                DataPage(pages[index], snap)
+            }
+        }
+        if (pageCount > 1) {
             Text(
-                "Page ${pagerState.currentPage + 1} / ${pages.size}",
+                "Page ${pagerState.currentPage + 1} / $pageCount",
                 modifier = Modifier.fillMaxWidth(),
                 fontSize = 14.sp,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
