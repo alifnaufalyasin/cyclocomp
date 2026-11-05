@@ -195,6 +195,9 @@ object TurnText {
             "arrive" -> "Arrive at your destination"
             "roundabout", "rotary" ->
                 if (step.exit != null) "At the roundabout take exit ${step.exit}$road" else "Enter the roundabout$road"
+            // OSRM adds a separate step when the rider leaves a roundabout.
+            "exit roundabout", "exit rotary" -> "Leave the roundabout$road"
+            "roundabout turn" -> if (dir == null) "Continue$road" else "At the roundabout turn $dir$road"
             "continue" -> if (dir == null || dir == "straight") "Continue straight" else "Continue $dir"
             "new name" -> "Continue$road"
             "turn", "end of road", "fork", "merge", "on ramp", "off ramp" ->

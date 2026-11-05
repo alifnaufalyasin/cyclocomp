@@ -127,6 +127,9 @@ class NavigationTest {
         assertEquals("Continue straight", TurnText.of(step("continue", "straight")))
         assertEquals("Make a U-turn", TurnText.of(step("turn", "uturn")))
         assertEquals("At the roundabout take exit 2 onto Jalan C", TurnText.of(step("roundabout", exit = 2, name = "Jalan C")))
+        // "exit roundabout" really appears in OSRM answers, right after the roundabout step.
+        assertEquals("Leave the roundabout onto Jalan D", TurnText.of(step("exit roundabout", "left", "Jalan D")))
+        assertEquals("At the roundabout turn right", TurnText.of(step("roundabout turn", "right")))
         assertEquals("Arrive at your destination", TurnText.of(step("arrive")))
         assertEquals("Head out", TurnText.of(step("depart")))
         assertEquals("Head out on Jalan A", TurnText.of(step("depart", name = "Jalan A")))
