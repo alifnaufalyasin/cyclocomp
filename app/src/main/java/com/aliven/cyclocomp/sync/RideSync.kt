@@ -38,60 +38,112 @@ object RideSync {
     private const val KEY = "uploaded_rides"
     private const val DIRTY = "dirty_rides"
 
+    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
     /** A ride changed after upload (heart rate merged in): the next sync replaces the repo copy. */
     fun markDirty(context: Context, rideName: String) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val dirty = prefs.getStringSet(DIRTY, emptySet())!!.toMutableSet().apply { add(rideName) }
-        prefs.edit().putStringSet(DIRTY, dirty).apply()
+        val p = prefs(context)
+        p.edit().putStringSet(DIRTY, p.getStringSet(DIRTY, emptySet())!!.toSet() + rideName).apply()
     }
 
-    /** Uploads each saved ride (GPX + summary JSON) to `rides/<year>/`. Safe to re-run: done rides are skipped. */
-    fun uploadRides(context: Context, repo: GitHubDataRepo, rides: List<File>): SyncReport {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val done = prefs.getStringSet(KEY, emptySet())!!.toMutableSet()
-        val dirty = prefs.getStringSet(DIRTY, emptySet())!!.toMutableSet()
+    /** The file is known to be in the repo (it was just downloaded from there). */
+    fun markUploaded(context: Context, fileName: String) {
+        val p = prefs(context)
+        p.edit().putStringSet(KEY, p.getStringSet(KEY, emptySet())!!.toSet() + fileName).apply()
+    }
+
+    private fun yearOf(name: String) = name.take(4).takeIf { y -> y.all { it.isDigit() } } ?: "unknown"
+
+    /**
+     * Uploads whatever the repo is missing or has an older copy of.
+     *
+     * [remoteNames] is the real listing of `rides/` in the repo. A ride counts as present only if it
+     * is in that list, so files lost from the repo are uploaded again, and a ride whose summary JSON
+     * is missing gets the summary. Without a listing it falls back to this phone's own upload record.
+     */
+    fun uploadRides(
+        context: Context,
+        repo: GitHubDataRepo,
+        rides: List<File>,
+        remoteNames: Set<String>? = null,
+    ): SyncReport {
+        val p = prefs(context)
+        val done = p.getStringSet(KEY, emptySet())!!.toMutableSet()
+        val dirty = p.getStringSet(DIRTY, emptySet())!!.toMutableSet()
         var uploaded = 0
         var existed = 0
         val failed = mutableListOf<String>()
 
         for (file in rides) {
-            val replace = file.name in dirty
-            if (file.name in done && !replace) continue
+            val name = file.name
+            val inRepo = remoteNames?.contains(name) ?: (name in done)
+            val replace = name in dirty
+            val isWorkout = name.endsWith(WorkoutStore.EXTENSION_SUFFIX)
+            val summaryName = file.nameWithoutExtension + ".json"
+            val summaryMissing = !isWorkout && remoteNames != null && summaryName !in remoteNames
+            if (inRepo && !replace && !summaryMissing) continue
+
             try {
-                val year = file.name.take(4).takeIf { y -> y.all { it.isDigit() } } ?: "unknown"
-                if (file.name.endsWith(WorkoutStore.EXTENSION_SUFFIX)) {
+                val year = yearOf(name)
+                if (isWorkout) {
                     // Screenshot workout stored beside the rides: uploaded as is, never overwritten.
-                    val r = repo.putNew("rides/$year/${file.name}", file.readBytes(), "Add workout ${file.name}")
+                    val r = repo.putNew("rides/$year/$name", file.readBytes(), "Add workout $name")
                     if (r == PutResult.CREATED) uploaded++ else existed++
-                    done.add(file.name)
-                    prefs.edit().putStringSet(KEY, done).apply()
-                    continue
-                }
-                val summary = file.inputStream().use { RideSummaries.summarize(GpxParser.parse(it)) }
-                val json = summary?.let { RideSummaryJson.toJson(file.name, it).toByteArray(Charsets.UTF_8) }
-                val gpxPath = "rides/$year/${file.name}"
-                val jsonPath = "rides/$year/${file.nameWithoutExtension}.json"
-                if (replace) {
-                    repo.putOrUpdate(gpxPath, file.readBytes(), "Update ride ${file.name}")
-                    if (json != null) repo.putOrUpdate(jsonPath, json, "Update summary ${file.name}")
-                    uploaded++
                 } else {
-                    val gpxResult = repo.putNew(gpxPath, file.readBytes(), "Add ride ${file.name}")
-                    if (json != null) repo.putNew(jsonPath, json, "Add summary ${file.name}")
-                    if (gpxResult == PutResult.CREATED) uploaded++ else existed++
+                    val summary = file.inputStream().use { RideSummaries.summarize(GpxParser.parse(it)) }
+                    val json = summary?.let { RideSummaryJson.toJson(name, it).toByteArray(Charsets.UTF_8) }
+                    val gpxPath = "rides/$year/$name"
+                    val jsonPath = "rides/$year/$summaryName"
+                    if (replace) {
+                        repo.putOrUpdate(gpxPath, file.readBytes(), "Update ride $name")
+                        if (json != null) repo.putOrUpdate(jsonPath, json, "Update summary $name")
+                        uploaded++
+                    } else {
+                        if (inRepo) {
+                            existed++ // only the summary was missing
+                        } else {
+                            val r = repo.putNew(gpxPath, file.readBytes(), "Add ride $name")
+                            if (r == PutResult.CREATED) uploaded++ else existed++
+                        }
+                        if (json != null && (remoteNames == null || summaryName !in remoteNames)) {
+                            repo.putNew(jsonPath, json, "Add summary $name")
+                        }
+                    }
                 }
-                done.add(file.name)
-                dirty.remove(file.name)
-                prefs.edit().putStringSet(KEY, done).putStringSet(DIRTY, dirty).apply()
+                done.add(name)
+                dirty.remove(name)
+                p.edit().putStringSet(KEY, done).putStringSet(DIRTY, dirty).apply()
             } catch (e: GitHubException) {
-                failed.add("${file.name}: ${e.message}")
+                failed.add("$name: ${e.message}")
                 // Auth/permission problems affect every file; stop instead of repeating the failure.
                 if (e.code == 401 || e.code == 403 || e.code == 404) break
             } catch (e: Exception) {
-                failed.add("${file.name}: ${e.message ?: e.javaClass.simpleName}")
+                failed.add("$name: ${e.message ?: e.javaClass.simpleName}")
             }
         }
         return SyncReport(uploaded, existed, failed)
+    }
+
+    /** Tells the other phones about rides deleted here, so they do not pull them back. */
+    fun pushTombstones(context: Context, repo: GitHubDataRepo): List<String> {
+        val lines = mutableListOf<String>()
+        for (name in SyncState.pendingTombstones(context)) {
+            try {
+                repo.putNew(
+                    "rides/${yearOf(name)}/$name${PullPlanner.TOMBSTONE_SUFFIX}",
+                    "deleted".toByteArray(Charsets.UTF_8),
+                    "Mark $name deleted",
+                )
+                SyncState.tombstoneUploaded(context, name)
+                lines.add("Deletion of $name shared with other phones")
+            } catch (e: GitHubException) {
+                lines.add("$name deletion not shared yet: ${e.message}")
+                if (e.code == 401 || e.code == 403 || e.code == 404) break
+            } catch (e: Exception) {
+                lines.add("$name deletion not shared yet: ${e.message ?: e.javaClass.simpleName}")
+            }
+        }
+        return lines
     }
 
     fun describe(r: SyncReport): String = buildString {
