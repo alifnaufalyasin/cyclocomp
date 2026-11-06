@@ -5,6 +5,7 @@ import android.location.Location
 import com.aliven.cyclocomp.core.GpxWriter
 import com.aliven.cyclocomp.core.LatLon
 import com.aliven.cyclocomp.core.RouteShape
+import com.aliven.cyclocomp.nav.NavSession
 import com.aliven.cyclocomp.core.RideStats
 import com.aliven.cyclocomp.core.TrackJournal
 import com.aliven.cyclocomp.core.TrackPoint
@@ -96,6 +97,7 @@ object RideRecorder {
         if (!stats.add(p)) return
         journal.appendText(TrackJournal.encode(p) + "\n")
         live.add(doubleArrayOf(p.lat, p.lon))
+        NavSession.onPosition(p.lat, p.lon, p.timeMs)
         publish(RideStatus.RECORDING)
     }
 
@@ -104,6 +106,7 @@ object RideRecorder {
         if (_snapshot.value.status == RideStatus.IDLE) return null
         val saved = finish()
         stats = RideStats()
+        NavSession.onRideEnded()
         publish(RideStatus.IDLE)
         return saved
     }

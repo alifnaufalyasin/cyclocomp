@@ -4,6 +4,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.platform.LocalContext
 import com.aliven.cyclocomp.core.TileTemplate
 import com.aliven.cyclocomp.map.MapSettings
+import com.aliven.cyclocomp.nav.NavSettings
+import com.aliven.cyclocomp.nav.OsrmAddress
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -37,14 +39,17 @@ fun PagesEditor(initial: List<List<DataField>>, onSave: (List<List<DataField>>) 
     var showMap by remember { mutableStateOf(MapSettings.showMapPage(context)) }
     var tileUrl by remember { mutableStateOf(MapSettings.tileTemplate(context)) }
     val tileUrlBad = tileUrl.isNotBlank() && !TileTemplate.isValid(tileUrl)
+    var osrmUrl by remember { mutableStateOf(NavSettings.osrmUrl(context)) }
+    val osrmBad = osrmUrl.isNotBlank() && OsrmAddress.normalize(osrmUrl) == null
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onCancel) { Text("Cancel") }
             Button(
-                enabled = !tileUrlBad,
+                enabled = !tileUrlBad && !osrmBad,
                 onClick = {
                     MapSettings.save(context, showMap, tileUrl)
+                    NavSettings.saveOsrmUrl(context, OsrmAddress.normalize(osrmUrl) ?: "")
                     onSave(pages.filter { it.isNotEmpty() }.ifEmpty { Pages.DEFAULT })
                 },
             ) { Text("Save") }
@@ -66,6 +71,19 @@ fun PagesEditor(initial: List<List<DataField>>, onSave: (List<List<DataField>>) 
                 )
             },
             isError = tileUrlBad,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = osrmUrl, onValueChange = { osrmUrl = it }, singleLine = true,
+            label = { Text("Routing server (OSRM, for navigation)") },
+            placeholder = { Text("https://…") },
+            supportingText = {
+                Text(
+                    if (osrmBad) "Needs an https:// address"
+                    else "Long-press the map to pick a destination. Use a server built with the bicycle profile for cycling routes."
+                )
+            },
+            isError = osrmBad,
             modifier = Modifier.fillMaxWidth(),
         )
 
