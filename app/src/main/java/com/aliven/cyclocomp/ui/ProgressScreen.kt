@@ -36,7 +36,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun ProgressScreen(onBack: () -> Unit) {
+fun ProgressScreen(onBack: () -> Unit, onOpenPlan: () -> Unit) {
     val context = LocalContext.current
     var rest by remember { mutableStateOf(TrainingSettings.restHr(context).toString()) }
     var max by remember { mutableStateOf(TrainingSettings.maxHr(context).toString()) }
@@ -57,6 +57,7 @@ fun ProgressScreen(onBack: () -> Unit) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onBack) { Text("Back") }
             Text("Progress", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            TextButton(onClick = onOpenPlan) { Text("Plan") }
         }
 
         val o = overview
