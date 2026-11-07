@@ -27,9 +27,10 @@ throw-away key; they are for testing and cannot be updated in place by a release
    | `RELEASE_KEY_ALIAS` | `cyclocomp` |
    | `RELEASE_KEY_PASSWORD` | the key password |
 
-3. Make a **read-only update token** for the phones: a fine-grained token limited to this
-   repository with *Contents: Read-only* (separate from the data-repo token). Enter it in
-   **Sync > App update** on each phone.
+3. The repository is public, so phones need no token to check for or download updates, and
+   friends can install the first APK straight from the Releases page. Keep it that way: never
+   commit secrets, and keep user data in the separate private data repo or on the account server.
+   The release secrets above are only used by `release.yml`, which runs on version tags.
 
 ## Publishing a version
 
@@ -55,5 +56,5 @@ Tags must look like `vMAJOR.MINOR.PATCH`.
 
 A debug APK and a release APK have different signatures, so Android refuses to update one with
 the other. Do this once per phone: run **Sync now** so everything is in the data repo, uninstall
-the debug build, install the first release APK, enter the repo/token again and **Sync now**.
+the debug build, install the first release APK, sign in or enter the sync settings again and **Sync now**.
 After that, updates install in place and keep your data.

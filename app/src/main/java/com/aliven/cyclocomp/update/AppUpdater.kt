@@ -21,31 +21,27 @@ import java.security.MessageDigest
 class UpdateException(message: String) : Exception(message)
 
 /**
- * Where to look for new versions. The app's own repo is private, so reading its releases needs a
- * read-only token; it is kept separate from the data-repo token so that one has no access to the code.
+ * Where to look for new versions. The app's repository is public, so no token is needed (and none is
+ * ever sent): anyone with the APK can check for updates, and no secret ships inside it.
  */
 object UpdateSettings {
     private const val PREFS = "cyclocomp_update"
-    private const val TOKEN = "update_token"
+    private const val OLD_TOKEN = "update_token"
     const val DEFAULT_REPO = "alifnaufalyasin/cyclocomp"
 
     fun repo(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("repo", DEFAULT_REPO) ?: DEFAULT_REPO
 
-    fun hasToken(context: Context): Boolean = SecureStore.get(context, TOKEN) != null
-    fun token(context: Context): String? = SecureStore.get(context, TOKEN)
-
-    fun save(context: Context, repo: String, token: String?) {
+    fun save(context: Context, repo: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("repo", repo.trim()).apply()
-        if (!token.isNullOrBlank()) SecureStore.put(context, TOKEN, token.trim())
     }
 
-    fun clearToken(context: Context) = SecureStore.remove(context, TOKEN)
+    /** Earlier versions asked for a read-only token. It is no longer used, so any saved copy is erased. */
+    fun forgetOldToken(context: Context) = SecureStore.remove(context, OLD_TOKEN)
 }
 
 class AppUpdater(
     private val repo: String,
-    private val token: String,
     private val http: Http,
     private val baseUrl: String = "https://api.github.com",
 ) {
@@ -54,7 +50,6 @@ class AppUpdater(
     }
 
     private fun headers(accept: String) = mapOf(
-        "Authorization" to "Bearer $token",
         "Accept" to accept,
         "X-GitHub-Api-Version" to "2022-11-28",
         "User-Agent" to "cyclocomp",
@@ -65,9 +60,8 @@ class AppUpdater(
         val r = http.request("GET", "$baseUrl/repos/$repo/releases/latest", headers("application/vnd.github+json"), null)
         return when (r.code) {
             200 -> ReleaseParser.parse(r.text)
-            404 -> null // no release published yet (or the token cannot see the repo)
-            401 -> throw UpdateException("Update token rejected (wrong, expired or revoked)")
-            403 -> throw UpdateException("Update token lacks permission, or GitHub rate limit reached")
+            404 -> null // no release published yet (or the repo name is wrong)
+            401, 403 -> throw UpdateException("GitHub refused the request, probably its hourly limit for this network. Try again later.")
             else -> throw UpdateException("GitHub answered ${r.code}")
         }
     }
