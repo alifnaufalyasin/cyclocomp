@@ -28,7 +28,9 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+      # Empty by default: Compose reads this whole file even when the "tunnel" profile is off, so the
+      # variable must not be required here. Without a token the tunnel container simply fails to start.
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
     depends_on:
       - pocketbase
 
