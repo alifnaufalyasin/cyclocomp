@@ -19,8 +19,37 @@ object JwtExpiry {
     }
 }
 
+/** Checks a new password before anything is sent; the server has the same limits (8 to 72 characters). */
+object PasswordRules {
+    const val MIN = 8
+    const val MAX = 72
+
+    /** A message for the first problem found, or null when the change can be sent. */
+    fun check(old: String, new: String, confirm: String): String? = when {
+        old.isEmpty() -> "Enter your current password."
+        new.length < MIN -> "The new password needs at least $MIN characters."
+        new.length > MAX -> "The new password can have at most $MAX characters."
+        new != confirm -> "The two new passwords do not match."
+        new == old -> "The new password must be different from the current one."
+        else -> null
+    }
+}
+
 /** Turns the server's error answers into short messages a person can act on. */
 internal object PbErrors {
+    /** The reason a password change was refused (400): usually a wrong current password. */
+    fun passwordProblem(body: String): String = try {
+        val data = JSONObject(body).optJSONObject("data")
+        when {
+            data?.has("oldPassword") == true -> "Your current password is wrong."
+            data?.optJSONObject("password") != null ->
+                "The server did not accept the new password: " + data.getJSONObject("password").optString("message")
+            else -> "The password could not be changed."
+        }
+    } catch (e: Exception) {
+        "The password could not be changed."
+    }
+
     fun failure(code: Int, body: String): StoreException {
         val serverMessage = try {
             JSONObject(body).optString("message").takeIf { it.isNotBlank() }
@@ -68,6 +97,21 @@ class PocketBaseAuth(baseUrl: String, private val http: Http) {
         val r = json("POST", "/api/collections/users/auth-refresh", s.token, null)
         if (r.code != 200) throw PbErrors.failure(r.code, r.text)
         return session(r.text, s.email)
+    }
+
+    /**
+     * Changes the password of the signed-in account. The server asks for the current password, so
+     * nobody can do this with only a stolen session. The old session token stops working once the
+     * password changes, so this signs in again and returns the new session.
+     */
+    fun changePassword(s: PbSession, oldPassword: String, newPassword: String): PbSession {
+        val r = json(
+            "PATCH", "/api/collections/users/records/${s.userId}", s.token,
+            JSONObject().put("oldPassword", oldPassword).put("password", newPassword).put("passwordConfirm", newPassword),
+        )
+        if (r.code == 400) throw StoreException(400, PbErrors.passwordProblem(r.text))
+        if (r.code != 200) throw PbErrors.failure(r.code, r.text)
+        return login(s.email, newPassword)
     }
 
     /** Deletes the account; the server removes every file the account owns along with it. */

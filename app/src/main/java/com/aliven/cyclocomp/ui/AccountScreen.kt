@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aliven.cyclocomp.sync.AccountSettings
 import com.aliven.cyclocomp.sync.Backend
+import com.aliven.cyclocomp.sync.PasswordRules
 import com.aliven.cyclocomp.sync.PbSession
 import com.aliven.cyclocomp.sync.PocketBaseAuth
 import com.aliven.cyclocomp.sync.ServerAddress
@@ -49,6 +50,9 @@ fun AccountScreen(onBack: () -> Unit) {
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var oldPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
 
     val serverBad = server.isNotBlank() && ServerAddress.normalize(server) == null
 
@@ -78,6 +82,62 @@ fun AccountScreen(onBack: () -> Unit) {
                     status = "Signed out on this phone. Your data stays in the account."
                 },
             ) { Text("Sign out") }
+
+            Text("Change password", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(
+                "Other phones signed in to this account will ask you to sign in again with the new password.",
+                fontSize = 13.sp,
+            )
+            OutlinedTextField(
+                value = oldPassword, onValueChange = { oldPassword = it }, singleLine = true,
+                label = { Text("Current password") }, visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = newPassword, onValueChange = { newPassword = it }, singleLine = true,
+                label = { Text("New password (at least ${PasswordRules.MIN} characters)") },
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = confirmPassword, onValueChange = { confirmPassword = it }, singleLine = true,
+                label = { Text("New password again") }, visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedButton(
+                enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    val problem = PasswordRules.check(oldPassword, newPassword, confirmPassword)
+                    if (problem != null) {
+                        status = problem
+                    } else {
+                        scope.launch {
+                            busy = true
+                            status = "Changing password…"
+                            val result = withContext(Dispatchers.IO) {
+                                try {
+                                    Result.success(
+                                        PocketBaseAuth(current.baseUrl, UrlConnectionHttp())
+                                            .changePassword(current, oldPassword, newPassword)
+                                    )
+                                } catch (e: Exception) {
+                                    Result.failure<PbSession>(e)
+                                }
+                            }
+                            result.onSuccess {
+                                AccountSettings.save(context, it)
+                                session = it
+                                oldPassword = ""
+                                newPassword = ""
+                                confirmPassword = ""
+                                status = "Password changed."
+                            }.onFailure {
+                                status = it.message ?: "Could not change the password"
+                            }
+                            busy = false
+                        }
+                    }
+                },
+            ) { Text("Change password") }
 
             Text("Delete my account", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Text(

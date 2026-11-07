@@ -83,6 +83,7 @@ object NavSession {
         val dest = _state.value.destination ?: return
         val ctx = appContext
         val url = ctx?.let { NavSettings.osrmUrl(it) }.orEmpty()
+        val avoidToll = ctx?.let { NavSettings.avoidToll(it) } ?: true
         val base = OsrmAddress.normalize(url)
         if (base == null) {
             _state.update { it.copy(message = "Set the routing server (https) in Edit pages first.") }
@@ -91,7 +92,7 @@ object NavSession {
         _state.update { it.copy(loading = true, message = null) }
         scope.launch {
             try {
-                val route = OsrmClient(base, UrlConnectionHttp()).route(from, dest)
+                val route = OsrmClient(base, UrlConnectionHttp()).route(from, dest, avoidToll)
                 val g = RouteGeometry(route)
                 geometry = g
                 // Only keep the result if the destination was not changed or cleared meanwhile.
