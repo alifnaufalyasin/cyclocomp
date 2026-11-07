@@ -95,8 +95,9 @@ Tell them plainly that, as the server owner, you could technically read their da
 - **Admin password lost or leaked:** `docker compose exec pocketbase /pb/pocketbase superuser upsert ...`
   sets a new one; rotate it if there is any doubt.
 
-## Not verified yet
+## Verification
 
-These files were written against the PocketBase v0.40 sources and API types, but have not been run
-here (there is no PocketBase in the development sandbox). The smoke test is the proof: please run it
-and tell me the result.
+Written against the PocketBase v0.40 sources and API types. The smoke test passed **23 of 23 checks**
+on PocketBase v0.40.6 running in Docker behind a Cloudflare Tunnel (run through the public HTTPS
+address, so uploads, file tokens and auth headers were checked end to end). Run it again after every
+PocketBase update or change to the migration.
