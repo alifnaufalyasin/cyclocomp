@@ -45,6 +45,10 @@ fun AccountScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var session by remember { mutableStateOf(AccountSettings.load(context)) }
     var server by remember { mutableStateOf(AccountSettings.serverUrl(context)) }
+    // The address field is only shown when this build has no server of its own, or the user is on another one.
+    var showServerField by remember {
+        mutableStateOf(AccountSettings.builtInServer.isEmpty() || server != AccountSettings.builtInServer)
+    }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
@@ -154,12 +158,18 @@ fun AccountScreen(onBack: () -> Unit) {
                 "Sign in with the email and password you were given. Accounts are created by the server owner.",
                 fontSize = 14.sp,
             )
-            OutlinedTextField(
-                value = server, onValueChange = { server = it }, singleLine = true,
-                label = { Text("Server address (https://…)") }, modifier = Modifier.fillMaxWidth(),
-                isError = serverBad,
-                supportingText = { if (serverBad) Text("Needs an https:// address") },
-            )
+            if (showServerField) {
+                OutlinedTextField(
+                    value = server, onValueChange = { server = it }, singleLine = true,
+                    label = { Text("Server address (https://…)") }, modifier = Modifier.fillMaxWidth(),
+                    isError = serverBad,
+                    supportingText = { if (serverBad) Text("Needs an https:// address") },
+                )
+            } else {
+                // The server this release was made for: nothing to type.
+                Text("Server: ${server.removePrefix("https://")}", fontSize = 13.sp)
+                TextButton(onClick = { showServerField = true }) { Text("Use a different server") }
+            }
             OutlinedTextField(
                 value = email, onValueChange = { email = it }, singleLine = true,
                 label = { Text("Email") }, modifier = Modifier.fillMaxWidth(),

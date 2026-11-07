@@ -2,6 +2,11 @@ package com.aliven.cyclocomp.sync
 
 import java.net.URI
 
+/** Which account server a sign-in starts from: the one the user chose, else the one this build was made for. */
+object ServerDefaults {
+    fun effective(saved: String, builtIn: String): String = saved.trim().ifEmpty { builtIn.trim() }
+}
+
 /**
  * Address of a server the app talks to (account server, routing server). Only https is accepted:
  * Android blocks cleartext traffic by default, so an http address would just fail at ride time.

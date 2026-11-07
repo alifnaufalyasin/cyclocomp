@@ -11,6 +11,7 @@ import com.aliven.cyclocomp.sync.PocketBaseAuth
 import com.aliven.cyclocomp.sync.PocketBaseStore
 import com.aliven.cyclocomp.sync.PutResult
 import com.aliven.cyclocomp.sync.ServerAddress
+import com.aliven.cyclocomp.sync.ServerDefaults
 import com.aliven.cyclocomp.sync.StoreException
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -477,6 +478,14 @@ class PocketBaseTest {
         assertEquals(1_900_000_000_000L, JwtExpiry.expiresAtMs(jwt(1_900_000_000_000L)))
         assertNull(JwtExpiry.expiresAtMs("not-a-jwt"))
         assertNull(JwtExpiry.expiresAtMs("a.b.c"))
+    }
+
+    @Test
+    fun aSignInStartsFromTheChosenServerElseTheOneBuiltIn() {
+        assertEquals("https://mine.example.org", ServerDefaults.effective("https://mine.example.org", "https://built-in.example.org"))
+        assertEquals("https://built-in.example.org", ServerDefaults.effective("", "https://built-in.example.org"))
+        assertEquals("https://built-in.example.org", ServerDefaults.effective("   ", " https://built-in.example.org "))
+        assertEquals("", ServerDefaults.effective("", "")) // a build without a server: the field stays empty
     }
 
     @Test

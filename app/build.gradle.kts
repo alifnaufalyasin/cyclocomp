@@ -14,6 +14,13 @@ android {
         // Release builds pass the version from the git tag (see RELEASE.md); other builds are "dev".
         versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
         versionName = (project.findProperty("appVersionName") as String?) ?: "0.0.0-dev"
+
+        // Address of the account server that new sign-ins start from. It comes from a repository variable
+        // (not a secret: the server's own login and access rules protect the data, not the address) so the
+        // source code stays generic. Anything that does not look like a plain https address is ignored.
+        val accountServer = (project.findProperty("accountServerUrl") as String?).orEmpty().trim().trimEnd('/')
+        val validServer = Regex("https://[A-Za-z0-9.-]+(:[0-9]+)?").matches(accountServer)
+        buildConfigField("String", "DEFAULT_ACCOUNT_SERVER", "\"${if (validServer) accountServer else ""}\"")
     }
 
     // Updates only install over the existing app if they are signed with the same key, so the release
@@ -57,6 +64,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
