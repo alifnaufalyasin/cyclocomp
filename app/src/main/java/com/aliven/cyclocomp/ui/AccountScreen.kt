@@ -202,6 +202,31 @@ fun AccountScreen(onBack: () -> Unit) {
                     }
                 },
             ) { Text("Sign in") }
+            TextButton(
+                enabled = !busy && !serverBad && server.isNotBlank() && email.isNotBlank(),
+                onClick = {
+                    val base = ServerAddress.normalize(server)
+                    if (base == null) {
+                        status = "Enter the server address, starting with https://"
+                    } else {
+                        scope.launch {
+                            busy = true
+                            status = "Sending…"
+                            val error = withContext(Dispatchers.IO) {
+                                try {
+                                    PocketBaseAuth(base, UrlConnectionHttp()).requestPasswordReset(email)
+                                    null
+                                } catch (e: Exception) {
+                                    e.message ?: "Could not send the request"
+                                }
+                            }
+                            status = error
+                                ?: "If this email has an account, a link to choose a new password was sent. Check your spam folder too."
+                            busy = false
+                        }
+                    }
+                },
+            ) { Text("Forgot password?") }
         }
 
         status?.let { Text(it) }

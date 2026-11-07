@@ -35,6 +35,8 @@ private class FakeServer : Http {
     var loginOk = Pair("a@example.org", "right-password")
     var failNetwork = false
     var loginCount = 0
+    val resetRequests = mutableListOf<String>()
+    var mailBroken = false
 
     private fun json(code: Int, o: JSONObject) = HttpResponse(code, o.toString().toByteArray())
 
@@ -54,6 +56,12 @@ private class FakeServer : Http {
                 validTokens.add(token)
                 json(200, JSONObject().put("token", token).put("record", JSONObject().put("id", "u1").put("email", loginOk.first)))
             } else json(400, JSONObject().put("message", "Failed to authenticate."))
+        }
+        if (path == "/api/collections/users/request-password-reset") {
+            // Like the real server: answers the same for any address, and needs no sign-in.
+            if (headers.containsKey("Authorization")) return json(400, JSONObject().put("message", "unexpected sign-in"))
+            resetRequests.add(JSONObject(String(body!!)).getString("email"))
+            return if (mailBroken) json(400, JSONObject().put("message", "Failed to send the reset email.")) else HttpResponse(204, ByteArray(0))
         }
         if (headers["Authorization"] !in validTokens) return json(401, JSONObject().put("message", "The request requires valid record authorization token."))
 
@@ -385,6 +393,50 @@ class PocketBaseTest {
         } catch (e: StoreException) {
             assertTrue(e.message!!, e.message!!.contains("did not accept the new password"))
             assertTrue(e.message!!.contains("between 8 and 72"))
+        }
+    }
+
+    @Test
+    fun forgotPasswordAsksForAnEmailWithoutSigningIn() {
+        val server = FakeServer()
+        PocketBaseAuth("https://pb.test", server).requestPasswordReset("  friend@example.org ")
+        assertEquals(listOf("friend@example.org"), server.resetRequests)
+        // An address with no account gets exactly the same answer, so nothing is revealed.
+        PocketBaseAuth("https://pb.test", server).requestPasswordReset("nobody@example.org")
+        assertEquals(2, server.resetRequests.size)
+    }
+
+    @Test
+    fun forgotPasswordExplainsWhenTheServerCannotSendMail() {
+        val server = FakeServer().apply { mailBroken = true }
+        try {
+            PocketBaseAuth("https://pb.test", server).requestPasswordReset("friend@example.org")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertTrue(e.message!!, e.message!!.contains("set up email"))
+        }
+    }
+
+    @Test
+    fun forgotPasswordChecksTheAddressBeforeAskingTheServer() {
+        val server = FakeServer()
+        try {
+            PocketBaseAuth("https://pb.test", server).requestPasswordReset("not-an-email")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertTrue(e.message!!.contains("email address"))
+        }
+        assertTrue(server.requests.isEmpty())
+    }
+
+    @Test
+    fun forgotPasswordReportsAnUnreachableServer() {
+        val server = FakeServer().apply { failNetwork = true }
+        try {
+            PocketBaseAuth("https://pb.test", server).requestPasswordReset("friend@example.org")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertTrue(e.message!!.contains("not reachable"))
         }
     }
 

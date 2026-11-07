@@ -81,6 +81,26 @@ Accounts are invite-only. In the dashboard open the `users` collection > **New r
 their email and a password, and send it to them privately (they can change it in the app).
 Tell them plainly that, as the server owner, you could technically read their data.
 
+## 6. Forgot-password emails (optional)
+
+The app has a **Forgot password?** button on the sign-in screen. It asks the server to email a one-time
+link to a small page of its own (`/reset.html`, served from `pb_public`), where the person chooses a new
+password. It needs the server to be able to send email:
+
+1. Update the server (`git pull`, `docker compose up -d --build`): the migration
+   `1760000100_cyclocomp_password_reset.js` puts the link in the email template and rate-limits reset requests
+   (5 per 10 minutes).
+2. Dashboard > Settings > **Application**: set **Application URL** to your public HTTPS address, e.g.
+   `https://fit.your-domain.org` (the link in the email is built from it).
+3. Dashboard > Settings > **Mail settings**: set the sender name and address, enable **Use SMTP mail server**
+   and fill in your provider's host, port, username and password. Use **Send test email** to check it.
+   Any SMTP service works (a Gmail app password, Brevo, Resend, your own mail server).
+4. Try it: on a phone, enter an account's email on the sign-in screen and tap **Forgot password?**.
+
+The app always answers "if this email has an account, a link was sent" so nobody can use it to find out
+which emails have accounts. Without SMTP the app says the email could not be sent; you can still reset
+a password yourself in the dashboard (users > the account > password).
+
 ## Looking after it
 
 - **Backups:** the data is the `pb_data` volume (SQLite database + uploaded files). Dashboard >
