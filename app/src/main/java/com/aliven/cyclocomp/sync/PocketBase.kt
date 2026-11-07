@@ -100,6 +100,21 @@ class PocketBaseAuth(baseUrl: String, private val http: Http) {
     }
 
     /**
+     * Asks the server to email a password-reset link. The server answers the same way whether or not the
+     * address has an account, so this cannot be used to find out who has one.
+     */
+    fun requestPasswordReset(email: String) {
+        val address = email.trim()
+        if (!address.contains('@') || address.length < 3) throw StoreException(400, "Enter the email address of your account.")
+        val r = json("POST", "/api/collections/users/request-password-reset", null, JSONObject().put("email", address))
+        when (r.code) {
+            200, 204 -> return
+            400, 500 -> throw StoreException(r.code, "The server could not send the email. Ask the server owner to set up email sending.")
+            else -> throw PbErrors.failure(r.code, r.text)
+        }
+    }
+
+    /**
      * Changes the password of the signed-in account. The server asks for the current password, so
      * nobody can do this with only a stolen session. The old session token stops working once the
      * password changes, so this signs in again and returns the new session.

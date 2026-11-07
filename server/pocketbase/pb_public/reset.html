@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The link in the reset email carries a one-time token: never send it on to other sites, load nothing external. -->
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<title>Cyclocomp: choose a new password</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #102a43; color: #fff; margin: 0; display: grid; min-height: 100vh; place-items: center; }
+  main { width: min(92vw, 380px); background: #17324d; border-radius: 12px; padding: 24px; }
+  h1 { font-size: 1.25rem; margin: 0 0 12px; }
+  label { display: block; margin: 12px 0 4px; font-size: .9rem; }
+  input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #486581; background: #0b1f33; color: #fff; font-size: 1rem; }
+  button { margin-top: 18px; width: 100%; padding: 12px; border: 0; border-radius: 8px; background: #ff9f1c; color: #1b1b1b; font-size: 1rem; font-weight: 600; }
+  button:disabled { opacity: .6; }
+  #msg { margin-top: 14px; min-height: 1.4em; font-size: .95rem; }
+  .ok { color: #7bdba0; } .bad { color: #ff9b9b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Choose a new password</h1>
+  <form id="f" autocomplete="off">
+    <label for="p1">New password (8 to 72 characters)</label>
+    <input id="p1" type="password" autocomplete="new-password" required minlength="8" maxlength="72">
+    <label for="p2">New password again</label>
+    <input id="p2" type="password" autocomplete="new-password" required minlength="8" maxlength="72">
+    <button id="b" type="submit">Change password</button>
+  </form>
+  <div id="msg" role="status"></div>
+</main>
+<script>
+(function () {
+  var token = new URLSearchParams(location.search).get("token");
+  // Keep the token out of the address bar and the browser history once it has been read.
+  history.replaceState(null, "", location.pathname);
+
+  var form = document.getElementById("f"), msg = document.getElementById("msg"), btn = document.getElementById("b");
+  function say(text, ok) { msg.textContent = text; msg.className = ok ? "ok" : "bad"; }
+
+  if (!token) { form.hidden = true; say("This link is not complete. Open it again from the email, or ask for a new one in the app.", false); return; }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var p1 = document.getElementById("p1").value, p2 = document.getElementById("p2").value;
+    if (p1.length < 8 || p1.length > 72) { say("The password needs 8 to 72 characters.", false); return; }
+    if (p1 !== p2) { say("The two passwords do not match.", false); return; }
+    btn.disabled = true; say("Changing password…", true);
+    fetch("/api/collections/users/confirm-password-reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token, password: p1, passwordConfirm: p2 })
+    }).then(function (r) {
+      if (r.status === 204 || r.status === 200) {
+        form.hidden = true;
+        say("Password changed. Open the Cyclocomp app and sign in with the new password.", true);
+      } else if (r.status === 400) {
+        btn.disabled = false;
+        say("This link has expired or was already used. Ask for a new one in the app.", false);
+      } else if (r.status === 429) {
+        btn.disabled = false;
+        say("Too many attempts. Wait a minute and try again.", false);
+      } else {
+        btn.disabled = false;
+        say("The server could not change the password (error " + r.status + ").", false);
+      }
+    }).catch(function () {
+      btn.disabled = false;
+      say("Could not reach the server. Check your connection and try again.", false);
+    });
+  });
+})();
+</script>
+</body>
+</html>
