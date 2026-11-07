@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot: () -> Unit) {
+fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot: () -> Unit, onOpenUpdate: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var slug by remember { mutableStateOf(SyncSettings.slug(context)) }
@@ -139,6 +139,10 @@ fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot:
 
         Button(onClick = onOpenScreenshot, modifier = Modifier.fillMaxWidth()) {
             Text("Import Huawei screenshot (this phone → inbox)")
+        }
+
+        OutlinedButton(onClick = onOpenUpdate, modifier = Modifier.fillMaxWidth()) {
+            Text("App update")
         }
 
         OutlinedButton(onClick = onOpenOcrDebug, modifier = Modifier.fillMaxWidth()) {
