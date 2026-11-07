@@ -1,11 +1,14 @@
 package com.aliven.cyclocomp.nav
 
 import android.content.Context
+import com.aliven.cyclocomp.core.Course
+import com.aliven.cyclocomp.core.CourseSteps
 import com.aliven.cyclocomp.core.LatLon
 import com.aliven.cyclocomp.core.NavProgress
 import com.aliven.cyclocomp.core.NavRoute
 import com.aliven.cyclocomp.core.OffRouteDetector
 import com.aliven.cyclocomp.core.RouteGeometry
+import com.aliven.cyclocomp.core.TurnText
 import com.aliven.cyclocomp.sync.UrlConnectionHttp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +25,8 @@ data class NavState(
     val loading: Boolean = false,
     val message: String? = null,
     val arrived: Boolean = false,
+    /** Set while following a saved GPX route instead of one found by the routing server. */
+    val courseName: String? = null,
 )
 
 /**
@@ -30,6 +35,7 @@ data class NavState(
  */
 object NavSession {
     private const val ARRIVED_WITHIN_M = 25.0
+    private const val OFF_COURSE_M = 50.0
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(NavState())
@@ -46,6 +52,23 @@ object NavSession {
         geometry = null
         _state.value = NavState(destination = destination, message = null)
         lastPosition?.let { fetch(it) }
+    }
+
+    /**
+     * Follow a saved GPX route. It works without the routing server: the line and its turn cues
+     * come from the file, and leaving the line is reported instead of being rerouted.
+     */
+    fun followCourse(course: Course) {
+        val route = CourseSteps.toNavRoute(course)
+        val g = RouteGeometry(route)
+        detector.reset()
+        geometry = g
+        _state.value = NavState(
+            destination = route.points.last(),
+            route = route,
+            progress = lastPosition?.let { g.progress(it) },
+            courseName = course.name,
+        )
     }
 
     /** The ride stopped: the last GPS position is stale now, so a new destination waits for a fresh fix. */
@@ -73,6 +96,12 @@ object NavSession {
         val p = g.progress(pos, st.progress?.segment)
         if (p.remainingM <= ARRIVED_WITHIN_M) {
             _state.update { it.copy(progress = p, arrived = true, message = null) }
+            return
+        }
+        if (st.courseName != null) {
+            // A saved route is followed as it is; the rider is only told how far off the line they are.
+            val off = if (p.offRouteM > OFF_COURSE_M) "Off the course (${TurnText.distance(p.offRouteM)} from it)" else null
+            _state.update { it.copy(progress = p, message = off) }
             return
         }
         _state.update { it.copy(progress = p) }

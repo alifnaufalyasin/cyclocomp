@@ -59,6 +59,7 @@ fun RideScreen(
     onOpenHistory: () -> Unit,
     onEditPages: () -> Unit,
     onOpenSync: () -> Unit,
+    onOpenRoutes: () -> Unit,
 ) {
     val context = LocalContext.current
     val snap by RideRecorder.snapshot.collectAsState()
@@ -158,7 +159,8 @@ fun RideScreen(
                 TextButton(onClick = { dim = true }) { Text("Dim screen") }
             } else {
                 TextButton(onClick = onOpenHistory) { Text("History") }
-                TextButton(onClick = onEditPages) { Text("Edit pages") }
+                TextButton(onClick = onOpenRoutes) { Text("Routes") }
+                TextButton(onClick = onEditPages) { Text("Pages") }
                 TextButton(onClick = onOpenSync) { Text("Sync") }
             }
         }
@@ -278,6 +280,7 @@ private fun NavCard(nav: NavState, avgSpeedMps: Double, modifier: Modifier = Mod
     Column(modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         val route = nav.route
         val p = nav.progress
+        nav.courseName?.let { Text("Following: $it", fontSize = 12.sp) }
         when {
             nav.arrived -> Text("You have arrived", fontSize = 22.sp, fontWeight = FontWeight.Bold)
             route != null && p != null -> {
@@ -294,9 +297,10 @@ private fun NavCard(nav: NavState, avgSpeedMps: Double, modifier: Modifier = Mod
                 )
             }
             nav.loading -> Text("Finding a route…", fontSize = 16.sp)
+            nav.courseName != null -> Text("Waiting for GPS to start the route.", fontSize = 14.sp)
             else -> Text(nav.message ?: "Destination set. The route is found once GPS has a fix.", fontSize = 14.sp)
         }
-        nav.message?.let { if (route != null || nav.arrived) Text(it, fontSize = 12.sp) }
-        TextButton(onClick = { NavSession.clear() }) { Text("Clear destination") }
+        nav.message?.let { if (route != null || nav.arrived) Text(it, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+        TextButton(onClick = { NavSession.clear() }) { Text(if (nav.courseName != null) "Stop following" else "Clear destination") }
     }
 }
