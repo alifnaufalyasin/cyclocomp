@@ -23,7 +23,9 @@ docker compose ps          # pocketbase should become "healthy"
 ```
 
 The build downloads PocketBase **v0.40.6** and checks its SHA-256 against the value pinned in the
-`Dockerfile`; it fails if they differ. The server listens on `127.0.0.1:8090` only.
+`Dockerfile`; it fails if they differ. The server listens on port **8090** of this machine's network
+address (plain HTTP), so a tunnel or proxy on another machine can reach it. Do not forward that port on
+the router. To keep it local-only, set `PB_BIND=127.0.0.1` in `.env`; to use another port, set `PB_PORT`.
 
 The first start runs `pb_migrations/1760000000_cyclocomp_files.js`, which creates the `files`
 collection with the access rules, turns **public sign-up off** and enables request rate limits.
@@ -39,6 +41,12 @@ Anyone who knows this password can read every account's data.
 
 ## 3. Put it on the internet with HTTPS (Cloudflare Tunnel)
 
+**If your tunnel runs somewhere else** (another container, the Proxmox host, another machine): point
+its public hostname at `http://<this-machine's-IP>:8090` and you are done; skip the rest of this section.
+Check from that machine first: `curl http://<this-machine's-IP>:8090/api/health`.
+
+**If you want the tunnel bundled here:**
+
 1. Cloudflare Zero Trust dashboard > Networks > Tunnels > create a tunnel (type "Cloudflared").
 2. Add a **public hostname**, for example `fit.your-domain.org`, with service `http://pocketbase:8090`.
 3. Copy the tunnel token into `.env` (copy `.env.example`; `.env` is git-ignored):
@@ -48,7 +56,9 @@ Anyone who knows this password can read every account's data.
 4. Start it: `docker compose --profile tunnel up -d`.
 5. Open `https://fit.your-domain.org/api/health` — it should answer `{"code":200,...}`.
 
-Then, **only if the server can be reached solely through the tunnel**, open the dashboard >
+Then, **only if nothing but the tunnel can reach the server** (with the default `PB_BIND=0.0.0.0` other
+machines on your network can too, and could fake the header, so prefer `PB_BIND=127.0.0.1` with a tunnel
+on the same machine for this), open the dashboard >
 Settings > Application and add `CF-Connecting-IP` under "Trusted proxy headers". Without it every
 request looks like it comes from the tunnel, so the rate limits are shared by everyone.
 

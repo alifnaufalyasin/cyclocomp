@@ -3,13 +3,18 @@
 #   docker compose up -d --build                      # the server, reachable only on this machine
 #   docker compose --profile tunnel up -d             # plus the Cloudflare Tunnel (needs TUNNEL_TOKEN in .env)
 #
-# The server listens on 127.0.0.1 only; the tunnel (or a reverse proxy) is what exposes it over HTTPS.
+# The server speaks plain HTTP on port 8090 of this machine; a tunnel or reverse proxy (here or on
+# another machine) is what exposes it over HTTPS. The cloudflared service below is optional.
 services:
   pocketbase:
     build: .
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8090:8090"
+      # Reachable on this machine's network address, so a tunnel or reverse proxy running elsewhere
+      # can point at http://<this-machine>:8090. Do NOT forward this port on the router: it speaks
+      # plain HTTP and the app only talks to https addresses (the tunnel/proxy provides that).
+      # Set PB_BIND=127.0.0.1 in .env to keep it local-only (e.g. when cloudflared runs here).
+      - "${PB_BIND:-0.0.0.0}:${PB_PORT:-8090}:8090"
     volumes:
       - pb_data:/pb/pb_data
       - ./pb_migrations:/pb/pb_migrations
