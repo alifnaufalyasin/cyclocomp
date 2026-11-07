@@ -5,7 +5,7 @@ import com.aliven.cyclocomp.core.LatLon
 import com.aliven.cyclocomp.core.NavRoute
 import com.aliven.cyclocomp.core.OsrmParser
 import com.aliven.cyclocomp.sync.Http
-import java.net.URI
+import com.aliven.cyclocomp.sync.ServerAddress
 import java.util.Locale
 
 class NavException(message: String) : Exception(message)
@@ -16,16 +16,7 @@ class NavException(message: String) : Exception(message)
  */
 object OsrmAddress {
     /** The address without a trailing slash, or null if it is not a usable https address. */
-    fun normalize(input: String): String? {
-        val t = input.trim().trimEnd('/')
-        if (!t.startsWith("https://") || t.any { it.isWhitespace() }) return null
-        val host = try {
-            URI(t).host
-        } catch (e: Exception) {
-            null
-        }
-        return if (host.isNullOrBlank()) null else t
-    }
+    fun normalize(input: String): String? = ServerAddress.normalize(input)
 }
 
 object NavSettings {

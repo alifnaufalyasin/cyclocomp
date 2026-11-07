@@ -1,0 +1,360 @@
+package com.aliven.cyclocomp
+
+import com.aliven.cyclocomp.sync.GitSha
+import com.aliven.cyclocomp.sync.Http
+import com.aliven.cyclocomp.sync.HttpResponse
+import com.aliven.cyclocomp.sync.JwtExpiry
+import com.aliven.cyclocomp.sync.Multipart
+import com.aliven.cyclocomp.sync.PbSession
+import com.aliven.cyclocomp.sync.PocketBaseAuth
+import com.aliven.cyclocomp.sync.PocketBaseStore
+import com.aliven.cyclocomp.sync.PutResult
+import com.aliven.cyclocomp.sync.ServerAddress
+import com.aliven.cyclocomp.sync.StoreException
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+import org.junit.Test
+import java.io.IOException
+import java.net.URI
+import java.net.URLDecoder
+import java.util.Base64
+
+/** A tiny in-memory stand-in for the account server, following what the real one answered in the smoke test. */
+private class FakeServer : Http {
+    class Row(val id: String, val path: String, var sha: String, var fileName: String, var bytes: ByteArray)
+
+    val rows = mutableListOf<Row>()
+    val validTokens = mutableSetOf<String>()
+    val requests = mutableListOf<String>()
+    var nextId = 1
+    var refreshReply: (() -> HttpResponse)? = null
+    var loginOk = Pair("a@example.org", "right-password")
+    var failNetwork = false
+
+    private fun json(code: Int, o: JSONObject) = HttpResponse(code, o.toString().toByteArray())
+
+    override fun request(method: String, url: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
+        if (failNetwork) throw IOException("no network")
+        requests.add("$method ${url.substringAfter("https://pb.test")}")
+        val uri = URI(url)
+        val path = uri.path
+        val query = (uri.rawQuery ?: "").split("&").filter { it.contains("=") }.associate {
+            URLDecoder.decode(it.substringBefore("="), "UTF-8") to URLDecoder.decode(it.substringAfter("="), "UTF-8")
+        }
+
+        if (path == "/api/collections/users/auth-with-password") {
+            val o = JSONObject(String(body!!))
+            return if (o.getString("identity") == loginOk.first && o.getString("password") == loginOk.second) {
+                json(200, JSONObject().put("token", "tok-login").put("record", JSONObject().put("id", "u1").put("email", loginOk.first)))
+                    .also { validTokens.add("tok-login") }
+            } else json(400, JSONObject().put("message", "Failed to authenticate."))
+        }
+        if (headers["Authorization"] !in validTokens) return json(401, JSONObject().put("message", "The request requires valid record authorization token."))
+
+        return when {
+            path == "/api/collections/users/auth-refresh" -> refreshReply?.invoke() ?: json(
+                200, JSONObject().put("token", "tok-refreshed").put("record", JSONObject().put("id", "u1").put("email", "a@example.org")),
+            ).also { validTokens.add("tok-refreshed") }
+
+            path.startsWith("/api/collections/users/records/") && method == "DELETE" -> HttpResponse(204, ByteArray(0))
+
+            path == "/api/files/token" -> json(200, JSONObject().put("token", "file-token"))
+
+            path.startsWith("/api/files/") -> {
+                if (query["token"] != "file-token") return HttpResponse(404, ByteArray(0))
+                val parts = path.removePrefix("/api/files/").split("/")
+                val row = rows.firstOrNull { it.id == parts[1] && it.fileName == parts[2] }
+                if (row == null) HttpResponse(404, ByteArray(0)) else HttpResponse(200, row.bytes)
+            }
+
+            path == "/api/collections/files/records" && method == "GET" -> list(query["filter"])
+
+            path == "/api/collections/files/records" && method == "POST" -> {
+                val form = parseMultipart(headers["Content-Type"]!!, body!!)
+                val p = form.fields.getValue("path")
+                if (rows.any { it.path == p }) json(400, JSONObject().put("message", "Failed to create record."))
+                else {
+                    val row = Row("rec${nextId++}", p, form.fields["sha"] ?: "", "f_${form.fileName}", form.file)
+                    rows.add(row)
+                    json(200, JSONObject().put("id", row.id).put("path", p).put("content", row.fileName))
+                }
+            }
+
+            path.startsWith("/api/collections/files/records/") && method == "PATCH" -> {
+                val id = path.substringAfterLast("/")
+                val row = rows.firstOrNull { it.id == id } ?: return HttpResponse(404, ByteArray(0))
+                val form = parseMultipart(headers["Content-Type"]!!, body!!)
+                form.fields["sha"]?.let { row.sha = it }
+                if (form.file.isNotEmpty()) row.bytes = form.file
+                json(200, JSONObject().put("id", row.id))
+            }
+
+            else -> HttpResponse(404, ByteArray(0))
+        }
+    }
+
+    private fun list(filter: String?): HttpResponse {
+        val literals = Regex("'((?:[^'\\\\]|\\\\.)*)'").findAll(filter ?: "").map {
+            it.groupValues[1].replace("\\'", "'").replace("\\\\", "\\")
+        }.toList()
+        val hits = when {
+            filter == null || filter.contains("!=") -> rows
+            filter.contains(">=") -> rows.filter { it.path >= literals[0] && it.path < literals[1] }
+            else -> rows.filter { it.path == literals[0] }
+        }.sortedBy { it.path }
+        val items = org.json.JSONArray()
+        hits.forEach {
+            items.put(JSONObject().put("id", it.id).put("collectionId", "cid").put("path", it.path).put("sha", it.sha).put("content", it.fileName))
+        }
+        return json(200, JSONObject().put("page", 1).put("totalPages", 1).put("totalItems", hits.size).put("items", items))
+    }
+
+    class Form(val fields: Map<String, String>, val fileName: String, val file: ByteArray)
+
+    private fun parseMultipart(contentType: String, body: ByteArray): Form {
+        val boundary = "--" + contentType.substringAfter("boundary=")
+        val text = String(body, Charsets.ISO_8859_1)
+        val fields = mutableMapOf<String, String>()
+        var fileName = ""
+        var file = ByteArray(0)
+        for (part in text.split(boundary).drop(1)) {
+            if (part.startsWith("--")) break
+            val headEnd = part.indexOf("\r\n\r\n")
+            val head = part.substring(0, headEnd)
+            val content = part.substring(headEnd + 4).removeSuffix("\r\n")
+            val name = Regex("name=\"([^\"]*)\"").find(head)!!.groupValues[1]
+            if (head.contains("filename=")) {
+                fileName = Regex("filename=\"([^\"]*)\"").find(head)!!.groupValues[1]
+                file = content.toByteArray(Charsets.ISO_8859_1)
+            } else fields[name] = content
+        }
+        return Form(fields, fileName, file)
+    }
+}
+
+class PocketBaseTest {
+    private val now = 1_800_000_000_000L // fixed "current time" for the session-renewal rules
+
+    private fun jwt(expMs: Long) = "e30." +
+        Base64.getUrlEncoder().withoutPadding().encodeToString("""{"exp":${expMs / 1000}}""".toByteArray()) + ".sig"
+
+    private fun session(token: String) = PbSession("https://pb.test", token, "u1", "a@example.org")
+
+    /** A server that knows a long-lived token, and a store signed in with it. */
+    private fun store(server: FakeServer, onSession: (PbSession) -> Unit = {}): PocketBaseStore {
+        val token = jwt(now + 14L * 24 * 3600 * 1000)
+        server.validTokens.add(token)
+        return PocketBaseStore(session(token), server, onSession, nowMs = { now })
+    }
+
+    @Test
+    fun loginReturnsASessionAndWrongPasswordsGetAClearMessage() {
+        val server = FakeServer()
+        val s = PocketBaseAuth("https://pb.test/", server).login(" a@example.org ", "right-password")
+        assertEquals("u1", s.userId)
+        assertEquals("https://pb.test", s.baseUrl)
+        assertEquals("a@example.org", s.email)
+        try {
+            PocketBaseAuth("https://pb.test", server).login("a@example.org", "nope")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertEquals("Wrong email or password.", e.message)
+        }
+    }
+
+    @Test
+    fun unreachableServerIsReportedNotCrashed() {
+        val server = FakeServer().apply { failNetwork = true }
+        try {
+            PocketBaseAuth("https://pb.test", server).login("a@example.org", "x")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertEquals(0, e.code)
+            assertTrue(e.message!!.contains("not reachable"))
+        }
+    }
+
+    @Test
+    fun putNewCreatesAndNeverOverwrites() {
+        val server = FakeServer()
+        val store = store(server)
+        assertEquals(PutResult.CREATED, store.putNew("rides/2026/a.gpx", "first".toByteArray(), "m"))
+        assertEquals(PutResult.EXISTS, store.putNew("rides/2026/a.gpx", "second".toByteArray(), "m"))
+        assertEquals("first", String(server.rows.single().bytes))
+        assertEquals(GitSha.blob("first".toByteArray()), server.rows.single().sha)
+    }
+
+    @Test
+    fun getRawReturnsTheContentAndNullForMissingPaths() {
+        val server = FakeServer()
+        val store = store(server)
+        store.putNew("rides/2026/a.gpx", "hello".toByteArray(), "m")
+        assertEquals("hello", String(store.getRaw("rides/2026/a.gpx")!!))
+        assertNull(store.getRaw("rides/2026/none.gpx"))
+    }
+
+    @Test
+    fun putOrUpdateReplacesExistingContentOrCreates() {
+        val server = FakeServer()
+        val store = store(server)
+        store.putOrUpdate("settings/plan.json", "v1".toByteArray(), "m") // creates
+        store.putOrUpdate("settings/plan.json", "v2".toByteArray(), "m") // updates
+        assertEquals(1, server.rows.size)
+        assertEquals("v2", String(store.getRaw("settings/plan.json")!!))
+        assertEquals(GitSha.blob("v2".toByteArray()), server.rows.single().sha)
+    }
+
+    @Test
+    fun listReturnsDirectChildrenLikeAFolder() {
+        val server = FakeServer()
+        val store = store(server)
+        store.putNew("rides/2025/old.gpx", "a".toByteArray(), "m")
+        store.putNew("rides/2026/a.gpx", "b".toByteArray(), "m")
+        store.putNew("rides/2026/a.workout.json", "c".toByteArray(), "m")
+        store.putNew("inbox/ride-phone/x.gpx", "d".toByteArray(), "m")
+        store.putNew("ridesX/other.gpx", "e".toByteArray(), "m") // must not leak into "rides"
+
+        val years = store.list("rides")
+        assertEquals(listOf("2025", "2026"), years.map { it.name })
+        assertTrue(years.all { it.type == "dir" })
+        assertEquals("rides/2026", years[1].path)
+
+        val files = store.list("rides/2026")
+        assertEquals(listOf("a.gpx", "a.workout.json"), files.map { it.name })
+        assertTrue(files.all { it.type == "file" })
+        assertEquals(GitSha.blob("b".toByteArray()), files[0].sha)
+        assertEquals("rides/2026/a.gpx", files[0].path)
+
+        assertEquals(listOf("ride-phone"), store.list("inbox").map { it.name })
+        assertTrue(store.list("nothing/here").isEmpty())
+        assertEquals(listOf("inbox", "rides", "ridesX"), store.list("").map { it.name })
+    }
+
+    @Test
+    fun pathsWithQuotesDoNotBreakTheFilter() {
+        val server = FakeServer()
+        val store = store(server)
+        store.putNew("inbox/p/it's mine.gpx", "x".toByteArray(), "m")
+        assertEquals("x", String(store.getRaw("inbox/p/it's mine.gpx")!!))
+    }
+
+    @Test
+    fun aRejectedTokenGivesASignInAgainMessage() {
+        val server = FakeServer()
+        val store = PocketBaseStore(session(jwt(now + 14L * 24 * 3600 * 1000)), server, nowMs = { now }) // not known to the server
+        try {
+            store.list("rides")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertEquals(401, e.code)
+            assertTrue(e.message!!.contains("Sign in again"))
+        }
+    }
+
+    @Test
+    fun sessionIsRenewedOnlyWhenLessThanAWeekIsLeft() {
+        // Plenty left: no refresh request is made.
+        val server = FakeServer()
+        store(server).list("rides")
+        assertTrue(server.requests.none { it.contains("auth-refresh") })
+
+        // Under a week left: refreshed once, the new token is reported and used from then on.
+        val soon = jwt(now + 2L * 24 * 3600 * 1000)
+        val server2 = FakeServer().apply { validTokens.add(soon) }
+        var saved: PbSession? = null
+        val store2 = PocketBaseStore(session(soon), server2, { saved = it }, nowMs = { now })
+        store2.list("rides")
+        store2.list("rides")
+        assertEquals(1, server2.requests.count { it.contains("auth-refresh") })
+        assertEquals("tok-refreshed", saved?.token)
+    }
+
+    @Test
+    fun anExpiredSessionThatCannotBeRenewedAsksForSignIn() {
+        val old = jwt(now + 1000)
+        val server = FakeServer().apply {
+            validTokens.add(old)
+            refreshReply = { HttpResponse(401, "{}".toByteArray()) }
+        }
+        try {
+            PocketBaseStore(session(old), server, nowMs = { now }).list("rides")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertEquals(401, e.code)
+            assertTrue(e.message!!.contains("expired"))
+        }
+    }
+
+    @Test
+    fun noNetworkDuringRenewalDoesNotBlockUse() {
+        val soon = jwt(now + 1000)
+        val server = FakeServer().apply {
+            validTokens.add(soon)
+            refreshReply = { throw IOException("offline") }
+        }
+        // The renewal fails quietly; the request itself still goes ahead with the current token.
+        assertTrue(PocketBaseStore(session(soon), server, nowMs = { now }).list("rides").isEmpty())
+    }
+
+    @Test
+    fun filesOverTheServerLimitAreRefusedBeforeUploading() {
+        val server = FakeServer()
+        val store = store(server)
+        try {
+            store.putNew("inbox/p/big.jpg", ByteArray(PocketBaseStore.MAX_FILE_BYTES + 1), "m")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertEquals(413, e.code)
+        }
+        assertTrue(server.rows.isEmpty())
+    }
+
+    @Test
+    fun deletingTheAccountCallsTheUserRecord() {
+        val server = FakeServer()
+        val s = PocketBaseAuth("https://pb.test", server).login("a@example.org", "right-password")
+        PocketBaseAuth("https://pb.test", server).deleteAccount(s)
+        assertTrue(server.requests.any { it == "DELETE /api/collections/users/records/u1" })
+    }
+
+    @Test
+    fun checkAccessSucceedsWhenSignedInAndFailsOtherwise() {
+        store(FakeServer()).checkAccess()
+        try {
+            PocketBaseStore(session("unknown"), FakeServer(), nowMs = { now }).checkAccess()
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertEquals(401, e.code)
+        }
+    }
+
+    @Test
+    fun multipartBodyHasFieldsFileAndTerminator() {
+        val mp = Multipart.build(mapOf("path" to "a/b"), "content", "x\"y.gpx", "DATA".toByteArray(), boundary = "BND")
+        val text = String(mp.bytes)
+        assertEquals("multipart/form-data; boundary=BND", mp.contentType)
+        assertTrue(text.contains("--BND\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\na/b\r\n"))
+        assertTrue(text.contains("name=\"content\"; filename=\"x%22y.gpx\"")) // quote cannot end the header early
+        assertTrue(text.contains("\r\n\r\nDATA\r\n"))
+        assertTrue(text.endsWith("--BND--\r\n"))
+    }
+
+    @Test
+    fun sessionExpiryIsReadFromTheToken() {
+        assertEquals(1_900_000_000_000L, JwtExpiry.expiresAtMs(jwt(1_900_000_000_000L)))
+        assertNull(JwtExpiry.expiresAtMs("not-a-jwt"))
+        assertNull(JwtExpiry.expiresAtMs("a.b.c"))
+    }
+
+    @Test
+    fun serverAddressMustBeHttps() {
+        assertEquals("https://fit.example.org", ServerAddress.normalize(" https://fit.example.org/ "))
+        assertNull(ServerAddress.normalize("http://fit.example.org"))
+        assertNull(ServerAddress.normalize("fit.example.org"))
+        assertNull(ServerAddress.normalize("https://"))
+        assertNull(ServerAddress.normalize("https://a b"))
+    }
+}

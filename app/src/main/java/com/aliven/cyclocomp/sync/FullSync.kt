@@ -41,7 +41,7 @@ object FullSync {
 
             lines.addAll(pushSettings(context, repo))
             lines.addAll(pushPlan(context, repo))
-        } catch (e: GitHubException) {
+        } catch (e: StoreException) {
             lines.add(e.message ?: "GitHub error")
         } catch (e: Exception) {
             lines.add("Sync stopped: ${e.message ?: e.javaClass.simpleName}")
@@ -51,7 +51,7 @@ object FullSync {
 
     private const val PLAN_PATH = "settings/plan.json"
 
-    private fun pullPlan(context: Context, repo: GitHubDataRepo): List<String> {
+    private fun pullPlan(context: Context, repo: DataStore): List<String> {
         val text = repo.getRaw(PLAN_PATH)?.toString(Charsets.UTF_8) ?: return emptyList()
         val remote = PlanSettingsJson.fromJson(text) ?: return emptyList()
         if (!PlanSettings.isValid(remote.goal)) return emptyList()
@@ -60,7 +60,7 @@ object FullSync {
         return listOf("Training goal updated from the repo (${remote.goal.weeklyTargetKm} km/week)")
     }
 
-    private fun pushPlan(context: Context, repo: GitHubDataRepo): List<String> {
+    private fun pushPlan(context: Context, repo: DataStore): List<String> {
         val localUpdated = PlanSettings.updatedMs(context)
         val goal = PlanSettings.load(context)
         if (localUpdated == 0L || goal == null) return emptyList() // never saved here: nothing to share
@@ -74,7 +74,7 @@ object FullSync {
         return listOf("Training goal shared with the repo")
     }
 
-    private fun pullSettings(context: Context, repo: GitHubDataRepo): List<String> {
+    private fun pullSettings(context: Context, repo: DataStore): List<String> {
         val text = repo.getRaw(SETTINGS_PATH)?.toString(Charsets.UTF_8) ?: return emptyList()
         val remote = TrainingSettingsJson.fromJson(text) ?: return emptyList()
         if (!TrainingSettings.isValid(remote.restHr, remote.maxHr)) return emptyList()
@@ -83,7 +83,7 @@ object FullSync {
         return listOf("Heart-rate settings updated from the repo (${remote.restHr}/${remote.maxHr})")
     }
 
-    private fun pushSettings(context: Context, repo: GitHubDataRepo): List<String> {
+    private fun pushSettings(context: Context, repo: DataStore): List<String> {
         val localUpdated = TrainingSettings.updatedMs(context)
         if (localUpdated == 0L) return emptyList() // never saved here: nothing to share
         val remote = repo.getRaw(SETTINGS_PATH)?.toString(Charsets.UTF_8)?.let { TrainingSettingsJson.fromJson(it) }

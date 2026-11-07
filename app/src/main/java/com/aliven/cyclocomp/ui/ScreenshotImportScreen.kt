@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.aliven.cyclocomp.core.Format
 import com.aliven.cyclocomp.core.HuaweiWorkout
 import com.aliven.cyclocomp.core.HuaweiWorkoutParser
-import com.aliven.cyclocomp.sync.GitHubException
+import com.aliven.cyclocomp.sync.StoreException
 import com.aliven.cyclocomp.sync.RepoPaths
 import com.aliven.cyclocomp.sync.SyncSettings
 import com.aliven.cyclocomp.sync.WorkoutJson
@@ -234,7 +234,7 @@ private fun upload(context: Context, workout: HuaweiWorkout, imageUri: Uri?): St
             }
         }
         message
-    } catch (e: GitHubException) {
+    } catch (e: StoreException) {
         e.message ?: "Upload failed"
     } catch (e: Exception) {
         e.message ?: "Upload failed"

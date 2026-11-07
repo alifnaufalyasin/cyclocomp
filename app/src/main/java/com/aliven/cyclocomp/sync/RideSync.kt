@@ -63,7 +63,7 @@ object RideSync {
      */
     fun uploadRides(
         context: Context,
-        repo: GitHubDataRepo,
+        repo: DataStore,
         rides: List<File>,
         remoteNames: Set<String>? = null,
     ): SyncReport {
@@ -113,7 +113,7 @@ object RideSync {
                 done.add(name)
                 dirty.remove(name)
                 p.edit().putStringSet(KEY, done).putStringSet(DIRTY, dirty).apply()
-            } catch (e: GitHubException) {
+            } catch (e: StoreException) {
                 failed.add("$name: ${e.message}")
                 // Auth/permission problems affect every file; stop instead of repeating the failure.
                 if (e.code == 401 || e.code == 403 || e.code == 404) break
@@ -125,7 +125,7 @@ object RideSync {
     }
 
     /** Tells the other phones about rides deleted here, so they do not pull them back. */
-    fun pushTombstones(context: Context, repo: GitHubDataRepo): List<String> {
+    fun pushTombstones(context: Context, repo: DataStore): List<String> {
         val lines = mutableListOf<String>()
         for (name in SyncState.pendingTombstones(context)) {
             try {
@@ -136,7 +136,7 @@ object RideSync {
                 )
                 SyncState.tombstoneUploaded(context, name)
                 lines.add("Deletion of $name shared with other phones")
-            } catch (e: GitHubException) {
+            } catch (e: StoreException) {
                 lines.add("$name deletion not shared yet: ${e.message}")
                 if (e.code == 401 || e.code == 403 || e.code == 404) break
             } catch (e: Exception) {
