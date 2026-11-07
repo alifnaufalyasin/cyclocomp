@@ -25,6 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aliven.cyclocomp.sync.AccountSettings
+import com.aliven.cyclocomp.sync.Backend
 import com.aliven.cyclocomp.sync.FullSync
 import com.aliven.cyclocomp.sync.RepoPaths
 import com.aliven.cyclocomp.sync.SyncSettings
@@ -33,20 +35,37 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot: () -> Unit, onOpenUpdate: () -> Unit) {
+fun SyncScreen(
+    onBack: () -> Unit,
+    onOpenOcrDebug: () -> Unit,
+    onOpenScreenshot: () -> Unit,
+    onOpenUpdate: () -> Unit,
+    onOpenAccount: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var backend by remember { mutableStateOf(SyncSettings.backend(context)) }
     var slug by remember { mutableStateOf(SyncSettings.slug(context)) }
     var device by remember { mutableStateOf(SyncSettings.device(context)) }
     var token by remember { mutableStateOf("") }
     var hasToken by remember { mutableStateOf(SyncSettings.hasToken(context)) }
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    val accountEmail = remember { AccountSettings.load(context)?.email }
 
     val save = {
-        SyncSettings.save(context, slug, device, token)
-        token = ""
-        hasToken = SyncSettings.hasToken(context)
+        if (backend == Backend.GITHUB) {
+            SyncSettings.save(context, slug, device, token)
+            token = ""
+            hasToken = SyncSettings.hasToken(context)
+        } else {
+            SyncSettings.saveDevice(context, device)
+        }
+    }
+    val choose = { b: Backend ->
+        backend = b
+        SyncSettings.setBackend(context, b)
+        status = null
     }
 
     Column(
@@ -57,26 +76,53 @@ fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot:
             TextButton(onClick = onBack) { Text("Back") }
             Text("Cloud sync", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
-        Text(
-            "Rides and shared files go to your private data repo on GitHub. Use a fine-grained token " +
-                "limited to that one repo with Contents: read and write. The token is stored encrypted on this phone.",
-            fontSize = 14.sp,
-        )
-        OutlinedTextField(
-            value = slug, onValueChange = { slug = it }, singleLine = true,
-            label = { Text("Data repo (owner/name)") }, modifier = Modifier.fillMaxWidth(),
-            isError = slug.isNotBlank() && !RepoPaths.isValidSlug(slug.trim()),
-        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val modifier = Modifier.weight(1f)
+            if (backend == Backend.ACCOUNT) {
+                Button(onClick = { choose(Backend.ACCOUNT) }, modifier = modifier) { Text("Account") }
+                OutlinedButton(onClick = { choose(Backend.GITHUB) }, modifier = modifier) { Text("GitHub repo") }
+            } else {
+                OutlinedButton(onClick = { choose(Backend.ACCOUNT) }, modifier = modifier) { Text("Account") }
+                Button(onClick = { choose(Backend.GITHUB) }, modifier = modifier) { Text("GitHub repo") }
+            }
+        }
+
+        if (backend == Backend.GITHUB) {
+            Text(
+                "Rides and shared files go to your private data repo on GitHub. Use a fine-grained token " +
+                    "limited to that one repo with Contents: read and write. The token is stored encrypted on this phone.",
+                fontSize = 14.sp,
+            )
+            OutlinedTextField(
+                value = slug, onValueChange = { slug = it }, singleLine = true,
+                label = { Text("Data repo (owner/name)") }, modifier = Modifier.fillMaxWidth(),
+                isError = slug.isNotBlank() && !RepoPaths.isValidSlug(slug.trim()),
+            )
+        } else {
+            Text(
+                "Your data is kept in your own account on the Cyclocomp server. Only you can see it.",
+                fontSize = 14.sp,
+            )
+            Text(
+                if (accountEmail != null) "Signed in as $accountEmail" else "Not signed in.",
+                fontWeight = FontWeight.SemiBold,
+            )
+            Button(onClick = onOpenAccount, modifier = Modifier.fillMaxWidth()) {
+                Text(if (accountEmail != null) "Manage account" else "Sign in")
+            }
+        }
         OutlinedTextField(
             value = device, onValueChange = { device = it }, singleLine = true,
             label = { Text("This phone's name (e.g. ride-phone)") }, modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(
-            value = token, onValueChange = { token = it }, singleLine = true,
-            label = { Text(if (hasToken) "Token (saved — type to replace)" else "GitHub token") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (backend == Backend.GITHUB) {
+            OutlinedTextField(
+                value = token, onValueChange = { token = it }, singleLine = true,
+                label = { Text(if (hasToken) "Token (saved — type to replace)" else "GitHub token") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { save(); status = "Saved." }, enabled = !busy, modifier = Modifier.weight(1f)) {
@@ -90,10 +136,10 @@ fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot:
                         status = "Testing…"
                         status = withContext(Dispatchers.IO) {
                             val cfg = SyncSettings.load(context)
-                            if (cfg == null) "Fill in repo, phone name and token first."
+                            if (cfg == null) SyncSettings.missingMessage(context)
                             else try {
                                 SyncSettings.repo(cfg).checkAccess()
-                                "Connected to ${cfg.slug}."
+                                "Connected to ${cfg.label}."
                             } catch (e: Exception) {
                                 e.message ?: "Connection failed"
                             }
@@ -113,7 +159,7 @@ fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot:
                     status = "Syncing…"
                     status = withContext(Dispatchers.IO) {
                         val cfg = SyncSettings.load(context)
-                        if (cfg == null) "Fill in repo, phone name and token first."
+                        if (cfg == null) SyncSettings.missingMessage(context)
                         else FullSync.run(context, cfg).joinToString("\n")
                     }
                     busy = false
@@ -127,7 +173,7 @@ fun SyncScreen(onBack: () -> Unit, onOpenOcrDebug: () -> Unit, onOpenScreenshot:
             fontSize = 12.sp,
         )
 
-        if (hasToken) {
+        if (backend == Backend.GITHUB && hasToken) {
             TextButton(onClick = {
                 SyncSettings.clearToken(context)
                 hasToken = false

@@ -10,7 +10,7 @@ class RepoEntry(val name: String, val type: String, val path: String, val sha: S
 
 enum class PutResult { CREATED, EXISTS }
 
-class GitHubException(val code: Int, message: String) : Exception(message)
+class GitHubException(code: Int, message: String) : StoreException(code, message)
 
 object RepoPaths {
     private val slug = Regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -33,8 +33,8 @@ class GitHubDataRepo(
     private val token: String,
     private val http: Http,
     private val baseUrl: String = "https://api.github.com",
-) {
-    fun putNew(path: String, bytes: ByteArray, message: String): PutResult {
+) : DataStore {
+    override fun putNew(path: String, bytes: ByteArray, message: String): PutResult {
         val body = JSONObject()
             .put("message", message)
             .put("content", Base64.getEncoder().encodeToString(bytes))
@@ -52,7 +52,7 @@ class GitHubDataRepo(
      * Replaces a file's content (or creates it). Only for paths this phone owns, e.g. a ride it
      * re-uploads after merging heart rate; the inbox stays create-only.
      */
-    fun putOrUpdate(path: String, bytes: ByteArray, message: String) {
+    override fun putOrUpdate(path: String, bytes: ByteArray, message: String) {
         val current = http.request("GET", contentsUrl(path), headers(), null)
         val sha = when (current.code) {
             200 -> JSONObject(current.text).optString("sha").ifEmpty { null }
@@ -68,7 +68,7 @@ class GitHubDataRepo(
         if (r.code != 200 && r.code != 201) throw failure(r)
     }
 
-    fun list(dir: String): List<RepoEntry> {
+    override fun list(dir: String): List<RepoEntry> {
         val r = http.request("GET", contentsUrl(dir), headers(), null)
         if (r.code == 404) return emptyList()
         if (r.code != 200) throw failure(r)
@@ -81,7 +81,7 @@ class GitHubDataRepo(
         }
     }
 
-    fun getRaw(path: String): ByteArray? {
+    override fun getRaw(path: String): ByteArray? {
         val r = http.request("GET", contentsUrl(path), headers("application/vnd.github.raw+json"), null)
         if (r.code == 404) return null
         if (r.code != 200) throw failure(r)
@@ -89,7 +89,7 @@ class GitHubDataRepo(
     }
 
     /** Throws [GitHubException] with a readable message if the repo can't be reached with this token. */
-    fun checkAccess() {
+    override fun checkAccess() {
         val r = http.request("GET", "$baseUrl/repos/$slug", headers(), null)
         if (r.code != 200) throw failure(r)
     }

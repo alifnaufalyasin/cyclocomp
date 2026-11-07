@@ -10,7 +10,7 @@ import java.nio.file.StandardCopyOption
 /** Brings this phone's rides in line with the repo, so any phone shows the same history. */
 object RidesPuller {
     /** Every file under `rides/<year>/` in the repo. */
-    fun fetchRemote(repo: GitHubDataRepo): List<RemoteFile> {
+    fun fetchRemote(repo: DataStore): List<RemoteFile> {
         val remote = mutableListOf<RemoteFile>()
         for (year in repo.list("rides").filter { it.type == "dir" }) {
             for (e in repo.list(year.path)) {
@@ -20,7 +20,7 @@ object RidesPuller {
         return remote
     }
 
-    fun run(context: Context, repo: GitHubDataRepo, ridesDir: File, remote: List<RemoteFile>): List<String> {
+    fun run(context: Context, repo: DataStore, ridesDir: File, remote: List<RemoteFile>): List<String> {
         val lines = mutableListOf<String>()
         val local = ridesDir.listFiles().orEmpty().map { it.name }.toSet()
         val actions = PullPlanner.plan(remote, local, SyncState.lastSeenSha(context), SyncState.deletedHere(context))
@@ -55,7 +55,7 @@ object RidesPuller {
                         removed++
                     }
                 }
-            } catch (e: GitHubException) {
+            } catch (e: StoreException) {
                 lines.add("${(action as? PullAction.Download)?.file?.name ?: ""}: ${e.message}")
                 if (e.code == 401 || e.code == 403) break
             } catch (e: Exception) {

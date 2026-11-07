@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
-import com.aliven.cyclocomp.sync.GitHubException
+import com.aliven.cyclocomp.sync.StoreException
 import com.aliven.cyclocomp.sync.PutResult
 import com.aliven.cyclocomp.sync.RepoPaths
 import com.aliven.cyclocomp.sync.SyncSettings
@@ -95,7 +95,7 @@ private fun ShareScreen(uris: List<Uri>, onClose: () -> Unit) {
                                 lines.add(if (r == PutResult.CREATED) "Uploaded $name" else "$name: already uploaded")
                             }
                         }
-                    } catch (e: GitHubException) {
+                    } catch (e: StoreException) {
                         lines.add("$name: ${e.message}")
                         if (e.code == 401 || e.code == 403 || e.code == 404) break
                     } catch (e: Exception) {

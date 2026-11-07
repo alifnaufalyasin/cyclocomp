@@ -22,7 +22,7 @@ import java.nio.file.StandardCopyOption
  * processed twice (by either phone). Files left unhandled are reported and retried next time.
  */
 object InboxImporter {
-    fun run(context: Context, repo: GitHubDataRepo): List<String> {
+    fun run(context: Context, repo: DataStore): List<String> {
         RideRecorder.init(context.applicationContext)
         val ridesDir = RideRecorder.ridesDir()
         val local = loadCandidates(ridesDir).toMutableList()
@@ -38,7 +38,7 @@ object InboxImporter {
             for (entry in pending) {
                 try {
                     lines.add(handle(context, repo, entry, ridesDir, local))
-                } catch (e: GitHubException) {
+                } catch (e: StoreException) {
                     lines.add("${entry.name}: ${e.message}")
                     if (e.code == 401 || e.code == 403) return lines // affects every file
                 } catch (e: Exception) {
@@ -52,7 +52,7 @@ object InboxImporter {
 
     private fun handle(
         context: Context,
-        repo: GitHubDataRepo,
+        repo: DataStore,
         entry: RepoEntry,
         ridesDir: File,
         local: MutableList<RideCandidate>,
@@ -104,7 +104,7 @@ object InboxImporter {
      * (at display time, by start and distance), so it does not matter which of the GPX and the
      * screenshot reaches this phone first.
      */
-    private fun handleWorkout(repo: GitHubDataRepo, entry: RepoEntry, bytes: ByteArray, ridesDir: File): String {
+    private fun handleWorkout(repo: DataStore, entry: RepoEntry, bytes: ByteArray, ridesDir: File): String {
         val stored = WorkoutJson.fromJson(bytes.toString(Charsets.UTF_8))
             ?: return "${entry.name}: not a workout file this app wrote; left in inbox"
         val start = stored.startEpochMs ?: return "${entry.name}: no start time in the file; left in inbox"
@@ -118,7 +118,7 @@ object InboxImporter {
         return "${entry.name}: stored workout ${target.name} (calories, zones, recovery)"
     }
 
-    private fun markDone(repo: GitHubDataRepo, entry: RepoEntry, note: String) {
+    private fun markDone(repo: DataStore, entry: RepoEntry, note: String) {
         repo.putNew("${entry.path}.done", note.toByteArray(Charsets.UTF_8), "Mark ${entry.name} imported")
     }
 
