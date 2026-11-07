@@ -38,6 +38,7 @@ private sealed interface Screen {
     data object OcrDebug : Screen
     data object Screenshot : Screen
     data object Progress : Screen
+    data object Plan : Screen
     data class Detail(val path: String) : Screen
 }
 
@@ -51,6 +52,7 @@ private fun AppNav() {
     BackHandler(enabled = screen != Screen.Ride) {
         screen = when (screen) {
             is Screen.Detail, Screen.Progress -> Screen.History
+            Screen.Plan -> Screen.Progress
             Screen.OcrDebug, Screen.Screenshot -> Screen.Sync
             else -> Screen.Ride
         }
@@ -79,7 +81,11 @@ private fun AppNav() {
             onOpenProgress = { screen = Screen.Progress },
             onBack = { screen = Screen.Ride },
         )
-        Screen.Progress -> ProgressScreen(onBack = { screen = Screen.History })
+        Screen.Progress -> ProgressScreen(
+            onBack = { screen = Screen.History },
+            onOpenPlan = { screen = Screen.Plan },
+        )
+        Screen.Plan -> PlanScreen(onBack = { screen = Screen.Progress })
         Screen.EditPages -> PagesEditor(
             initial = pages,
             onSave = {

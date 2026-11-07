@@ -69,6 +69,36 @@ object PullPlanner {
     fun remoteWins(localHrPoints: Int, remoteHrPoints: Int) = remoteHrPoints > localHrPoints
 }
 
+/** The training goal shared between phones as `settings/plan.json`; the most recently saved copy wins. */
+object PlanSettingsJson {
+    class Values(val goal: com.aliven.cyclocomp.core.PlanGoal, val updatedMs: Long)
+
+    fun toJson(v: Values): String = JSONObject()
+        .put("target_km", v.goal.weeklyTargetKm)
+        .put("rides", v.goal.ridesPerWeek)
+        .put("ramp", v.goal.rampPercent)
+        .put("started_on", v.goal.startedOn.toString())
+        .put("start_km", v.goal.startKm)
+        .put("updated_ms", v.updatedMs)
+        .toString(2)
+
+    fun fromJson(text: String): Values? = try {
+        val o = JSONObject(text)
+        Values(
+            com.aliven.cyclocomp.core.PlanGoal(
+                weeklyTargetKm = o.getDouble("target_km"),
+                ridesPerWeek = o.getInt("rides"),
+                rampPercent = o.getInt("ramp"),
+                startedOn = java.time.LocalDate.parse(o.getString("started_on")),
+                startKm = o.getDouble("start_km"),
+            ),
+            o.getLong("updated_ms"),
+        )
+    } catch (e: Exception) {
+        null
+    }
+}
+
 /** Heart-rate settings shared between phones; the most recently saved copy wins. */
 object TrainingSettingsJson {
     class Values(val restHr: Int, val maxHr: Int, val updatedMs: Long)

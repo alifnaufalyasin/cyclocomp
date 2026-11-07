@@ -1,6 +1,7 @@
 package com.aliven.cyclocomp.sync
 
 import android.content.Context
+import com.aliven.cyclocomp.analytics.PlanSettings
 import com.aliven.cyclocomp.analytics.TrainingSettings
 import com.aliven.cyclocomp.recording.RideRecorder
 
@@ -26,6 +27,7 @@ object FullSync {
 
         try {
             lines.addAll(pullSettings(context, repo))
+            lines.addAll(pullPlan(context, repo))
 
             val remote = RidesPuller.fetchRemote(repo)
             lines.addAll(RidesPuller.run(context, repo, ridesDir, remote))
@@ -38,12 +40,38 @@ object FullSync {
             lines.addAll(RideSync.pushTombstones(context, repo))
 
             lines.addAll(pushSettings(context, repo))
+            lines.addAll(pushPlan(context, repo))
         } catch (e: GitHubException) {
             lines.add(e.message ?: "GitHub error")
         } catch (e: Exception) {
             lines.add("Sync stopped: ${e.message ?: e.javaClass.simpleName}")
         }
         return lines
+    }
+
+    private const val PLAN_PATH = "settings/plan.json"
+
+    private fun pullPlan(context: Context, repo: GitHubDataRepo): List<String> {
+        val text = repo.getRaw(PLAN_PATH)?.toString(Charsets.UTF_8) ?: return emptyList()
+        val remote = PlanSettingsJson.fromJson(text) ?: return emptyList()
+        if (!PlanSettings.isValid(remote.goal)) return emptyList()
+        if (!TrainingSettingsJson.remoteIsNewer(PlanSettings.updatedMs(context), remote.updatedMs)) return emptyList()
+        PlanSettings.save(context, remote.goal, remote.updatedMs)
+        return listOf("Training goal updated from the repo (${remote.goal.weeklyTargetKm} km/week)")
+    }
+
+    private fun pushPlan(context: Context, repo: GitHubDataRepo): List<String> {
+        val localUpdated = PlanSettings.updatedMs(context)
+        val goal = PlanSettings.load(context)
+        if (localUpdated == 0L || goal == null) return emptyList() // never saved here: nothing to share
+        val remote = repo.getRaw(PLAN_PATH)?.toString(Charsets.UTF_8)?.let { PlanSettingsJson.fromJson(it) }
+        if (remote != null && remote.updatedMs >= localUpdated) return emptyList()
+        repo.putOrUpdate(
+            PLAN_PATH,
+            PlanSettingsJson.toJson(PlanSettingsJson.Values(goal, localUpdated)).toByteArray(Charsets.UTF_8),
+            "Update training goal",
+        )
+        return listOf("Training goal shared with the repo")
     }
 
     private fun pullSettings(context: Context, repo: GitHubDataRepo): List<String> {
