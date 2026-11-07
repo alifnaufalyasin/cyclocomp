@@ -124,6 +124,34 @@ expect_status "A can update its own file" 2xx "$code"
 code=$(call -X PATCH "$PB_URL/api/collections/files/records/$REC_ID" -H "Authorization: $A_TOKEN" -F "owner=$B_ID")
 expect_status "A cannot hand its file to B" non2xx "$code"
 
+echo "Clearing out files the app deleted (limited to account A)"
+printf 'old ride\n' > "$TMP/p.gpx"
+printf 'deleted\n' > "$TMP/p.del"
+call -X POST "$PB_URL/api/collections/files/records" -H "Authorization: $A_TOKEN" \
+  -F "owner=$A_ID" -F "path=rides/2026/purge.gpx" -F "content=@$TMP/p.gpx;filename=purge.gpx" > /dev/null
+call -X POST "$PB_URL/api/collections/files/records" -H "Authorization: $A_TOKEN" \
+  -F "owner=$A_ID" -F "path=rides/2026/purge.gpx.deleted" -F "content=@$TMP/p.del;filename=purge.deleted" > /dev/null
+count_path() { # <path> -> how many records A has at that path
+  call -G "$PB_URL/api/collections/files/records" -H "Authorization: $A_TOKEN" --data-urlencode "filter=path='$1'" > /dev/null
+  jq -r '.totalItems // -1' "$TMP/body"
+}
+code=$(call -X POST "$PB_URL/api/cyclocomp/purge?owner=$A_ID" -H "Authorization: $A_TOKEN")
+expect_status "an ordinary account cannot run the cleanup" non2xx "$code"
+code=$(call -X POST "$PB_URL/api/cyclocomp/purge?originalDays=abc" -H "Authorization: $SU_TOKEN")
+expect_status "a bad day count is refused" non2xx "$code"
+code=$(call -X POST "$PB_URL/api/cyclocomp/purge?owner=$A_ID" -H "Authorization: $SU_TOKEN")
+expect_status "cleanup with the real 30/90 days runs" 2xx "$code"
+[ "$(count_path rides/2026/purge.gpx)" = "1" ] && [ "$(count_path rides/2026/purge.gpx.deleted)" = "1" ] \
+  && ok "fresh deletions are kept (file and marker)" || bad "fresh deletions were removed too early"
+code=$(call -X POST "$PB_URL/api/cyclocomp/purge?owner=$A_ID&originalDays=0&markerDays=9999" -H "Authorization: $SU_TOKEN")
+expect_status "cleanup with originalDays=0 runs" 2xx "$code"
+[ "$(count_path rides/2026/purge.gpx)" = "0" ] && ok "the deleted file is removed" || bad "the deleted file is still there"
+[ "$(count_path rides/2026/purge.gpx.deleted)" = "1" ] && ok "its marker is kept for the other phone" || bad "the marker was removed too early"
+[ "$(count_path rides/2026/smoke.gpx)" = "1" ] && ok "files without a marker are untouched" || bad "a file without a marker was removed"
+code=$(call -X POST "$PB_URL/api/cyclocomp/purge?owner=$A_ID&originalDays=0&markerDays=0" -H "Authorization: $SU_TOKEN")
+expect_status "cleanup with markerDays=0 runs" 2xx "$code"
+[ "$(count_path rides/2026/purge.gpx.deleted)" = "0" ] && ok "the old marker is removed" || bad "the old marker is still there"
+
 echo "Deleting an account removes its files"
 call -X DELETE "$PB_URL/api/collections/users/records/$A_ID" -H "Authorization: $A_TOKEN" > /dev/null
 code=$(call "$PB_URL/api/collections/files/records/$REC_ID" -H "Authorization: $SU_TOKEN")

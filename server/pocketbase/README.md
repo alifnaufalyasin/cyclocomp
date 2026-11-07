@@ -101,6 +101,25 @@ The app always answers "if this email has an account, a link was sent" so nobody
 which emails have accounts. Without SMTP the app says the email could not be sent; you can still reset
 a password yourself in the dashboard (users > the account > password).
 
+## 7. Files the app deleted
+
+When a ride or route is deleted in the app, the app uploads a small marker named `<path>.deleted` so
+the other phone deletes its copy too. The original file and the marker would stay on the server
+forever, so a daily job (`pb_hooks/cleanup.pb.js`, 03:17 server time) clears them out:
+
+- the original file is removed **30 days** after its marker was created;
+- the marker is removed **90 days** after it was created. It has to outlive the time a phone can stay
+  offline: a phone that never saw the marker would upload the deleted ride again.
+
+Only `rides/` and `routes/` paths with a marker are touched. The counts are `ORIGINAL_DAYS` and
+`MARKER_DAYS` in `pb_hooks/purge.js`. The migration `1760000200_cyclocomp_file_dates.js` adds the
+creation date this needs; files that already exist start their clock on the day of the migration, so
+nothing that was deleted earlier disappears at once.
+
+A superuser can also run it by hand, e.g. `POST /api/cyclocomp/purge?originalDays=30&markerDays=90`
+(optional `&owner=<user id>`); the answer says how many files and markers were removed. The smoke test
+uses this on its throw-away account.
+
 ## Looking after it
 
 - **Backups:** the data is the `pb_data` volume (SQLite database + uploaded files). Dashboard >
@@ -119,5 +138,7 @@ a password yourself in the dashboard (users > the account > password).
 
 Written against the PocketBase v0.40 sources and API types. The smoke test passed **23 of 23 checks**
 on PocketBase v0.40.6 running in Docker behind a Cloudflare Tunnel (run through the public HTTPS
-address, so uploads, file tokens and auth headers were checked end to end). Run it again after every
-PocketBase update or change to the migration.
+address, so uploads, file tokens and auth headers were checked end to end). After the clean-up of
+deleted files was added it passed **33 of 33** on a local Docker instance of v0.40.6, including data
+that existed before the date migration. Run it again after every PocketBase update or change to the
+migrations or hooks.

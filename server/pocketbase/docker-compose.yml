@@ -18,6 +18,8 @@ services:
     volumes:
       - pb_data:/pb/pb_data
       - ./pb_migrations:/pb/pb_migrations
+      # The daily job that clears out files the app has deleted (30 / 90 days, see pb_hooks/purge.js).
+      - ./pb_hooks:/pb/pb_hooks:ro
       # Static pages served at the root of the server (the password-reset page).
       - ./pb_public:/pb/pb_public:ro
     healthcheck:
