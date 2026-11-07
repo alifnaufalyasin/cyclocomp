@@ -27,6 +27,34 @@ fun readAtMost(input: java.io.InputStream, maxBytes: Int): ByteArray? {
     return out.toByteArray()
 }
 
+/** Converts a saved ride (GPX) to a FIT file in the cache folder, ready to share. Blocking: call off the main thread. */
+fun exportFit(context: Context, gpx: File): Result<File> {
+    return try {
+        val segments = gpx.inputStream().use { com.aliven.cyclocomp.core.GpxParser.parse(it) }
+        val bytes = com.aliven.cyclocomp.core.FitWriter.write(segments)
+            ?: return Result.failure(IllegalStateException("This ride has no usable GPS points to export."))
+        val dir = File(context.cacheDir, "exports").apply {
+            mkdirs()
+            listFiles()?.forEach { it.delete() } // keep only the file being shared
+        }
+        val out = File(dir, gpx.nameWithoutExtension + ".fit")
+        out.writeBytes(bytes)
+        Result.success(out)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+}
+
+fun shareFit(context: Context, file: File) {
+    val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "application/octet-stream"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, "Export FIT"))
+}
+
 /** The file name a picked document goes by, if the provider tells us. */
 fun displayNameOf(context: Context, uri: android.net.Uri): String? = try {
     context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->

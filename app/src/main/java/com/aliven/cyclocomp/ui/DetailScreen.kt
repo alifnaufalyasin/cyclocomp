@@ -39,7 +39,9 @@ import com.aliven.cyclocomp.core.RideSummary
 import com.aliven.cyclocomp.sync.StoredWorkout
 import com.aliven.cyclocomp.sync.SyncState
 import com.aliven.cyclocomp.sync.WorkoutStore
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -54,6 +56,8 @@ private class Loaded(
 fun DetailScreen(file: File, onBack: () -> Unit, onDeleted: () -> Unit) {
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var exportStatus by remember { mutableStateOf<String?>(null) }
     val loaded by produceState<Loaded?>(null, file) {
         value = withContext(Dispatchers.IO) {
             try {
@@ -111,6 +115,21 @@ fun DetailScreen(file: File, onBack: () -> Unit, onDeleted: () -> Unit) {
             LineChart("Elevation", "m", l.series.elevationM)
             LineChart("Heart rate", "bpm", l.series.hr)
         }
+
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {
+                scope.launch {
+                    exportStatus = "Preparing the FIT file…"
+                    val result = withContext(Dispatchers.IO) { exportFit(context, file) }
+                    result.onSuccess {
+                        exportStatus = null
+                        shareFit(context, it)
+                    }.onFailure { exportStatus = it.message ?: "Could not export this ride." }
+                }
+            },
+        ) { Text("Export FIT (Strava, Garmin Connect)") }
+        exportStatus?.let { Text(it, fontSize = 14.sp) }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { share(context, file) }, modifier = Modifier.weight(1f)) { Text("Share GPX") }

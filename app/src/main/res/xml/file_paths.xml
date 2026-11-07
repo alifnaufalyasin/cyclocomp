@@ -3,4 +3,6 @@
     <files-path name="rides" path="rides/" />
     <!-- Downloaded app updates, handed to the system installer. -->
     <cache-path name="updates" path="updates/" />
+    <!-- FIT files exported from a ride, handed to the share sheet. -->
+    <cache-path name="exports" path="exports/" />
 </paths>
