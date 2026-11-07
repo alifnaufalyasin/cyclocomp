@@ -76,8 +76,12 @@ object AccountSettings {
     private const val PREFS = "cyclocomp_account"
     private const val TOKEN = "account_token"
 
-    /** The last server address typed in, kept even when signed out so it need not be typed again. */
-    fun serverUrl(context: Context): String = prefs(context).getString("server_url", "") ?: ""
+    /** The server this build was made for (empty for builds without one, e.g. a local debug build). */
+    val builtInServer: String get() = com.aliven.cyclocomp.BuildConfig.DEFAULT_ACCOUNT_SERVER
+
+    /** The address a sign-in starts from: the last one used, else the one built into this release. */
+    fun serverUrl(context: Context): String =
+        ServerDefaults.effective(prefs(context).getString("server_url", "") ?: "", builtInServer)
 
     fun saveServerUrl(context: Context, url: String) {
         prefs(context).edit().putString("server_url", url.trim()).apply()

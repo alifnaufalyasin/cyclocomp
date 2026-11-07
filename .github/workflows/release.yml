@@ -86,6 +86,7 @@ jobs:
           gradle assembleRelease --no-daemon
           -PappVersionName=${{ steps.version.outputs.name }}
           -PappVersionCode=${{ steps.version.outputs.code }}
+          -PaccountServerUrl=${{ vars.ACCOUNT_SERVER_URL }}
 
       - name: Name the APK and write its checksum
         id: apk

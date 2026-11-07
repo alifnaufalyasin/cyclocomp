@@ -39,7 +39,7 @@ jobs:
         run: gradle testDebugUnitTest --no-daemon
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon -PaccountServerUrl="${{ vars.ACCOUNT_SERVER_URL }}"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
