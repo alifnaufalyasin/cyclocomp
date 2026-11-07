@@ -12,6 +12,30 @@ import java.io.File
 fun granted(context: Context, permission: String): Boolean =
     ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
+/** Reads a stream into memory, or returns null if it is longer than [maxBytes]. */
+fun readAtMost(input: java.io.InputStream, maxBytes: Int): ByteArray? {
+    val out = java.io.ByteArrayOutputStream()
+    val buf = ByteArray(64 * 1024)
+    var total = 0
+    while (true) {
+        val n = input.read(buf)
+        if (n < 0) break
+        total += n
+        if (total > maxBytes) return null
+        out.write(buf, 0, n)
+    }
+    return out.toByteArray()
+}
+
+/** The file name a picked document goes by, if the provider tells us. */
+fun displayNameOf(context: Context, uri: android.net.Uri): String? = try {
+    context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+        if (c.moveToFirst()) c.getString(0) else null
+    } ?: uri.lastPathSegment
+} catch (e: Exception) {
+    uri.lastPathSegment
+}
+
 fun Context.findActivity(): Activity? {
     var c: Context = this
     while (c is ContextWrapper) {

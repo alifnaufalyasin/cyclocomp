@@ -39,6 +39,8 @@ object FullSync {
             lines.add(RideSync.describe(report))
             lines.addAll(RideSync.pushTombstones(context, repo))
 
+            lines.addAll(RoutesSync.run(context, repo))
+
             lines.addAll(pushSettings(context, repo))
             lines.addAll(pushPlan(context, repo))
         } catch (e: StoreException) {
