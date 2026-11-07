@@ -1,0 +1,43 @@
+# Cyclocomp account server (PocketBase).
+#
+#   docker compose up -d --build                      # the server, reachable only on this machine
+#   docker compose --profile tunnel up -d             # plus the Cloudflare Tunnel (needs TUNNEL_TOKEN in .env)
+#
+# The server speaks plain HTTP on port 8090 of this machine; a tunnel or reverse proxy (here or on
+# another machine) is what exposes it over HTTPS. The cloudflared service below is optional.
+services:
+  pocketbase:
+    build: .
+    restart: unless-stopped
+    ports:
+      # Reachable on this machine's network address, so a tunnel or reverse proxy running elsewhere
+      # can point at http://<this-machine>:8090. Do NOT forward this port on the router: it speaks
+      # plain HTTP and the app only talks to https addresses (the tunnel/proxy provides that).
+      # Set PB_BIND=127.0.0.1 in .env to keep it local-only (e.g. when cloudflared runs here).
+      - "${PB_BIND:-0.0.0.0}:${PB_PORT:-8090}:8090"
+    volumes:
+      - pb_data:/pb/pb_data
+      - ./pb_migrations:/pb/pb_migrations
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Optional: Cloudflare Tunnel, so no port has to be opened on the router.
+  # Create the tunnel in the Cloudflare Zero Trust dashboard, point its public hostname at
+  # http://pocketbase:8090 and put the tunnel token in .env (never commit .env).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      # Empty by default: Compose reads this whole file even when the "tunnel" profile is off, so the
+      # variable must not be required here. Without a token the tunnel container simply fails to start.
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
+    depends_on:
+      - pocketbase
+
+volumes:
+  pb_data:
