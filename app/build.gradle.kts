@@ -11,15 +11,38 @@ android {
         applicationId = "com.aliven.cyclocomp"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        // Release builds pass the version from the git tag (see RELEASE.md); other builds are "dev".
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("appVersionName") as String?) ?: "0.0.0-dev"
+    }
+
+    // Updates only install over the existing app if they are signed with the same key, so the release
+    // key comes from the environment (GitHub Actions secrets) and is never in the repository.
+    val releaseStoreFile = System.getenv("RELEASE_STORE_FILE")
+    val hasReleaseSigning = !releaseStoreFile.isNullOrBlank() &&
+        !System.getenv("RELEASE_STORE_PASSWORD").isNullOrBlank() &&
+        !System.getenv("RELEASE_KEY_ALIAS").isNullOrBlank() &&
+        !System.getenv("RELEASE_KEY_PASSWORD").isNullOrBlank()
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Code shrinking is off for now: it has never been tried against osmdroid / ML Kit / Compose
+            // here, and a broken shrink would only show up as a crash on the phone.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
 

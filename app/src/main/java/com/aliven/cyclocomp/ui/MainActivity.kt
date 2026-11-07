@@ -39,6 +39,7 @@ private sealed interface Screen {
     data object Screenshot : Screen
     data object Progress : Screen
     data object Plan : Screen
+    data object Update : Screen
     data class Detail(val path: String) : Screen
 }
 
@@ -53,7 +54,7 @@ private fun AppNav() {
         screen = when (screen) {
             is Screen.Detail, Screen.Progress -> Screen.History
             Screen.Plan -> Screen.Progress
-            Screen.OcrDebug, Screen.Screenshot -> Screen.Sync
+            Screen.OcrDebug, Screen.Screenshot, Screen.Update -> Screen.Sync
             else -> Screen.Ride
         }
     }
@@ -72,7 +73,9 @@ private fun AppNav() {
             onBack = { screen = Screen.Ride },
             onOpenOcrDebug = { screen = Screen.OcrDebug },
             onOpenScreenshot = { screen = Screen.Screenshot },
+            onOpenUpdate = { screen = Screen.Update },
         )
+        Screen.Update -> UpdateScreen(onBack = { screen = Screen.Sync })
         Screen.OcrDebug -> OcrDebugScreen(onBack = { screen = Screen.Sync })
         Screen.Screenshot -> ScreenshotImportScreen(onBack = { screen = Screen.Sync })
         Screen.History -> HistoryScreen(
