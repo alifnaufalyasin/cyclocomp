@@ -13,6 +13,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.aliven.cyclocomp.R
 import com.aliven.cyclocomp.ui.MainActivity
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -67,7 +68,7 @@ class RideService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Recording ride")
             .setContentText("GPS is active")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_stat_bike)
             .setContentIntent(open)
             .setOngoing(true)
             .build()
