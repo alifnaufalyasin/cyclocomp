@@ -154,6 +154,95 @@ class HuaweiWorkoutParserTest {
         assertEquals(LocalDateTime.of(2026, 11, 25, 6, 42), start("11/25/2026, 06:42")) // 25 cannot be a month
     }
 
+    // A second real screenshot (another day, a slower ride). Differences from the first: the
+    // aerobic-stress number and its level word share one row, an icon is read as "(", "recOvery"
+    // has a capital O, "115bpm" has no space, and "Dropped" kept its value.
+    private val real2 = listOf(
+        row(133, "Alif Naufal"),
+        row(183, "HUAWEI WATCH FIT3"),
+        row(240, "MUMUNGGANG"),
+        row(408, "109)"),
+        row(569, "(6)"),
+        row(787, "Tasikrgglaya"),
+        row(852, "(17)"),
+        row(1355, "Google Maps"),
+        row(1552, "Outdoor cycle"),
+        row(1585, "17.73."),
+        row(1616, "07/11/2026, 06:02"),
+        row(1772, "Duration | Avg speed"),
+        row(1840, "O 01:12:38 | ( 14.65 km/h"),
+        row(1997, "Total calories | Avg heart rate"),
+        row(2074, "391 kcal | 115bpm"),
+        row(2271, "Heart rate (bpm)"),
+        row(2376, "Average | Maximum"),
+        row(2456, "115 | 134"),
+        row(2555, "Heart rate"),
+        row(2942, "15 | 3( | 60"),
+        row(3169, "• Extreme | 0 min"),
+        row(3259, "o Anaerobic | 0 min"),
+        row(3354, "• Aerobic | <1 min"),
+        row(3446, "• Fat-burning | 40 min"),
+        row(3542, "• Warm-up | 31 min"),
+        row(3696, "Heart rate recOvery (bpm)"),
+        row(3797, "Dropped | Start/End"),
+        row(3870, "3 | 103/96"),
+        row(4341, "07:25 | 1 min | 2 min"),
+        row(4604, "Performance"),
+        row(4695, "Aerobic training stress"),
+        row(4785, "1.8 | Recovery"),
+        row(4935, "Recovery time"),
+        row(5023, "2h"),
+        row(5253, "Speed (km/h)"),
+        row(5357, "Average | Fastest"),
+        row(5430, "14.65 | 26.64"),
+        row(6211, "Speed (km/h)"),
+        row(6303, "Avg speed"),
+        row(6377, "14.65"),
+        row(6477, "KM Speed (km/h)"),
+        row(6571, "19.35"),
+        row(6648, "6-10 | 14.80"),
+        row(6726, "11-15 | 18.91"),
+        row(6800, "Less than 5 km 7.80"),
+        row(7051, "Huawei Health"),
+    )
+
+    @Test
+    fun readsTheSecondRealScreenshot() {
+        val w = HuaweiWorkoutParser.parse(real2)
+        assertEquals("Outdoor cycle", w.activity)
+        assertEquals(LocalDateTime.of(2026, 11, 7, 6, 2), w.startLocal)
+        assertEquals(17.73, w.distanceKm!!, 0.0)
+        assertEquals(1 * 3600 + 12 * 60 + 38, w.durationS)
+        assertEquals(14.65, w.avgSpeedKmh!!, 0.0)
+        assertEquals(26.64, w.maxSpeedKmh!!, 0.0)
+        assertEquals(391, w.kcal)
+        assertEquals(115, w.avgHr)
+        assertEquals(134, w.maxHr)
+        assertEquals(103, w.hrRecoveryStart)
+        assertEquals(96, w.hrRecoveryEnd)
+        assertEquals(3, w.hrRecoveryDrop)
+        assertEquals(2, w.recoveryHours)
+        assertTrue(w.warnings.toString(), w.warnings.isEmpty())
+    }
+
+    @Test
+    fun numberAndLevelOnTheSameRowAreBothRead() {
+        val w = HuaweiWorkoutParser.parse(real2)
+        assertEquals(1.8, w.aerobicStress!!, 0.0)
+        assertEquals("Recovery", w.stressLevel)
+    }
+
+    @Test
+    fun lessThanOneMinuteInAZoneCountsAsZero() {
+        val w = HuaweiWorkoutParser.parse(real2)
+        assertEquals(
+            mapOf("Extreme" to 0, "Anaerobic" to 0, "Aerobic" to 0, "Fat-burning" to 40, "Warm-up" to 31),
+            w.zoneMinutes,
+        )
+        assertEquals(0, HuaweiWorkoutParser.parseMinutes("<1 min"))
+        assertEquals(1, HuaweiWorkoutParser.parseMinutes("1 min"))
+    }
+
     @Test
     fun helpers() {
         assertEquals(3586, HuaweiWorkoutParser.parseDuration("O 00:59:46"))
