@@ -31,6 +31,8 @@ data class RideSnapshot(
     val lat: Double? = null,
     val lon: Double? = null,
     val pointCount: Int = 0,
+    /** When the last GPS fix arrived (wall clock); the ride start counts until the first fix. 0 when not riding. */
+    val lastFixMs: Long = 0,
 )
 
 /** Process-wide ride state shared by [RideService] and the UI. All calls happen on the main thread. */
@@ -42,6 +44,7 @@ object RideRecorder {
 
     // This ride's accepted positions as (lat, lon), for the live map. Not persisted: the journal is.
     private val live = ArrayList<DoubleArray>()
+    private var lastFix = 0L
 
     private val _snapshot = MutableStateFlow(RideSnapshot())
     val snapshot: StateFlow<RideSnapshot> = _snapshot
@@ -65,6 +68,7 @@ object RideRecorder {
         stats = RideStats()
         live.clear()
         journal.delete()
+        lastFix = System.currentTimeMillis() // the first fix is awaited from now
         publish(RideStatus.RECORDING)
     }
 
@@ -98,6 +102,7 @@ object RideRecorder {
         journal.appendText(TrackJournal.encode(p) + "\n")
         live.add(doubleArrayOf(p.lat, p.lon))
         NavSession.onPosition(p.lat, p.lon, p.timeMs)
+        lastFix = System.currentTimeMillis()
         publish(RideStatus.RECORDING)
     }
 
@@ -136,6 +141,7 @@ object RideRecorder {
             lat = live.lastOrNull()?.get(0),
             lon = live.lastOrNull()?.get(1),
             pointCount = live.size,
+            lastFixMs = if (status == RideStatus.IDLE) 0L else lastFix,
         )
     }
 }

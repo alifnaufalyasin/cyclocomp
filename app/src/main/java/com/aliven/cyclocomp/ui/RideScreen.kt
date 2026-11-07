@@ -17,7 +17,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.delay
+import com.aliven.cyclocomp.core.LocationLevel
+import com.aliven.cyclocomp.core.Reliability
+import com.aliven.cyclocomp.core.ReliabilityAdvice
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -106,15 +116,29 @@ fun RideScreen(
         Build.VERSION.SDK_INT >= 33 && !granted(context, Manifest.permission.POST_NOTIFICATIONS)
     }
 
+    val continueStart = {
+        if (needsNotificationPermission()) {
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            startRide()
+        }
+    }
+
+    // One-time explanation of "Allow all the time"; the ride starts either way.
+    var askAlways by remember { mutableStateOf(false) }
+    val afterLocation = {
+        if (LocationAccess.level(context) == LocationLevel.WHILE_IN_USE && !LocationAccess.askedBefore(context)) {
+            askAlways = true
+        } else {
+            continueStart()
+        }
+    }
+
     val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
-            if (needsNotificationPermission()) {
-                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                startRide()
-            }
+            afterLocation()
         } else {
             message = "Location permission is required to record a ride."
         }
@@ -122,11 +146,7 @@ fun RideScreen(
 
     val onStart = {
         if (granted(context, Manifest.permission.ACCESS_FINE_LOCATION)) {
-            if (needsNotificationPermission()) {
-                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                startRide()
-            }
+            afterLocation()
         } else {
             locationLauncher.launch(
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -139,6 +159,56 @@ fun RideScreen(
         RideService.stop(context)
         message = if (saved != null) "Saved ${saved.name}" else "No GPS points recorded"
     }
+
+    if (askAlways) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Keep recording with the screen off") },
+            text = {
+                Text(
+                    "Choose “Allow all the time” for location on the next screen, otherwise Android may " +
+                        "stop GPS when the screen turns off. The ride starts either way."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    LocationAccess.markAsked(context)
+                    askAlways = false
+                    LocationAccess.openAppSettings(context)
+                    continueStart()
+                }) { Text("Open settings") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    LocationAccess.markAsked(context)
+                    askAlways = false
+                    continueStart()
+                }) { Text("Not now") }
+            },
+        )
+    }
+
+    // Re-check permissions whenever the rider comes back from Android's settings.
+    var recheck by remember { mutableIntStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) recheck++ }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val advice = remember(recheck, snap.status) {
+        Reliability.advice(LocationAccess.level(context), LocationAccess.batteryUnrestricted(context))
+    }
+
+    // A clock for the "no GPS" banner, only ticking while recording.
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(snap.status) {
+        while (snap.status == RideStatus.RECORDING) {
+            now = System.currentTimeMillis()
+            delay(5000)
+        }
+    }
+    val gpsLost = snap.status == RideStatus.RECORDING && Reliability.gpsLost(now, snap.lastFixMs)
 
     if (dim && active) {
         Box(
@@ -162,6 +232,28 @@ fun RideScreen(
                 TextButton(onClick = onOpenRoutes) { Text("Routes") }
                 TextButton(onClick = onEditPages) { Text("Pages") }
                 TextButton(onClick = onOpenSync) { Text("Sync") }
+            }
+        }
+
+        if (gpsLost) {
+            Text(
+                "No GPS fix for ${(now - snap.lastFixMs) / 1000} s. Check that location is on and the sky is visible.",
+                color = Color(0xFFB00020), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            )
+        }
+        if (!active && advice.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("For reliable recording with the screen off:", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                if (ReliabilityAdvice.ALLOW_ALL_THE_TIME in advice) {
+                    TextButton(onClick = { LocationAccess.openAppSettings(context) }) {
+                        Text("Set location to “Allow all the time”")
+                    }
+                }
+                if (ReliabilityAdvice.STOP_BATTERY_SAVING in advice) {
+                    TextButton(onClick = { LocationAccess.requestBatteryExemption(context) }) {
+                        Text("Stop battery saving for this app")
+                    }
+                }
             }
         }
 

@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -45,12 +46,30 @@ class RideService : Service() {
             .setMinUpdateIntervalMillis(1000L)
             .build()
         client.requestLocationUpdates(request, callback, mainLooper)
+        acquireWakeLock()
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         client.removeLocationUpdates(callback)
+        releaseWakeLock()
         super.onDestroy()
+    }
+
+    // Keeps the CPU running while a ride is recorded, so points are still handled and saved with the
+    // screen off. Held for at most 12 hours as a safety net in case the service is never stopped.
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        wakeLock = getSystemService(PowerManager::class.java)
+            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "cyclocomp:ride")
+            ?.also { it.acquire(12 * 60 * 60 * 1000L) }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
     }
 
     private fun createChannel() {
