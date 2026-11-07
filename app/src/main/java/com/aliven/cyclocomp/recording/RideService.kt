@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.aliven.cyclocomp.R
+import com.aliven.cyclocomp.nav.VoiceGuide
 import com.aliven.cyclocomp.ui.MainActivity
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -47,10 +48,16 @@ class RideService : Service() {
             .build()
         client.requestLocationUpdates(request, callback, mainLooper)
         acquireWakeLock()
+        if (voice == null) voice = VoiceGuide(this).also { it.start() }
         return START_NOT_STICKY
     }
 
+    // Speaks navigation directions for as long as the ride is recorded, also with the screen off.
+    private var voice: VoiceGuide? = null
+
     override fun onDestroy() {
+        voice?.stop()
+        voice = null
         client.removeLocationUpdates(callback)
         releaseWakeLock()
         super.onDestroy()

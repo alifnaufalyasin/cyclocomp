@@ -35,7 +35,7 @@ data class NavState(
  */
 object NavSession {
     private const val ARRIVED_WITHIN_M = 25.0
-    private const val OFF_COURSE_M = 50.0
+    const val OFF_COURSE_M = 50.0
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(NavState())

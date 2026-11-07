@@ -42,6 +42,7 @@ fun PagesEditor(initial: List<List<DataField>>, onSave: (List<List<DataField>>) 
     var osrmUrl by remember { mutableStateOf(NavSettings.osrmUrl(context)) }
     val osrmBad = osrmUrl.isNotBlank() && OsrmAddress.normalize(osrmUrl) == null
     var avoidToll by remember { mutableStateOf(NavSettings.avoidToll(context)) }
+    var voiceCues by remember { mutableStateOf(NavSettings.voiceCues(context)) }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -52,6 +53,7 @@ fun PagesEditor(initial: List<List<DataField>>, onSave: (List<List<DataField>>) 
                     MapSettings.save(context, showMap, tileUrl)
                     NavSettings.saveOsrmUrl(context, OsrmAddress.normalize(osrmUrl) ?: "")
                     NavSettings.saveAvoidToll(context, avoidToll)
+                    NavSettings.saveVoiceCues(context, voiceCues)
                     onSave(pages.filter { it.isNotEmpty() }.ifEmpty { Pages.DEFAULT })
                 },
             ) { Text("Save") }
@@ -91,6 +93,10 @@ fun PagesEditor(initial: List<List<DataField>>, onSave: (List<List<DataField>>) 
         Row(Modifier.fillMaxWidth().clickable { avoidToll = !avoidToll }, verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = avoidToll, onCheckedChange = { avoidToll = it })
             Text("Avoid toll roads (for a motorcycle or car routing profile)")
+        }
+        Row(Modifier.fillMaxWidth().clickable { voiceCues = !voiceCues }, verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = voiceCues, onCheckedChange = { voiceCues = it })
+            Text("Spoken turn directions (English; read out by the phone's speech engine)")
         }
 
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
