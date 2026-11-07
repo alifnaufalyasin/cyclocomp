@@ -94,14 +94,14 @@ class AppUpdateTest {
         }
     }
 
-    private fun updater(http: Http) = AppUpdater("me/app", "tok", http, "https://api.test")
+    private fun updater(http: Http) = AppUpdater("me/app", http, "https://api.test")
 
     @Test
-    fun latestAsksTheReleasesEndpointWithTheToken() {
+    fun latestAsksTheReleasesEndpointWithoutAnyCredentials() {
         val http = FakeHttp { HttpResponse(200, releaseJson.toByteArray()) }
         val r = updater(http).latest()!!
         assertEquals("https://api.test/repos/me/app/releases/latest", http.lastUrl)
-        assertEquals("Bearer tok", http.lastHeaders["Authorization"])
+        assertNull(http.lastHeaders["Authorization"])
         assertEquals("v0.2.0", r.tag)
     }
 
@@ -111,7 +111,7 @@ class AppUpdateTest {
     }
 
     @Test
-    fun tokenProblemsGiveReadableErrors() {
+    fun refusalsGiveReadableErrors() {
         fun message(code: Int): String {
             try {
                 updater(FakeHttp { HttpResponse(code, ByteArray(0)) }).latest()
@@ -121,8 +121,8 @@ class AppUpdateTest {
             fail("expected UpdateException for $code")
             return ""
         }
-        assertTrue(message(401).contains("rejected"))
-        assertTrue(message(403).contains("permission"))
+        assertTrue(message(401).contains("refused"))
+        assertTrue(message(403).contains("hourly limit"))
         assertTrue(message(500).contains("500"))
     }
 
@@ -142,7 +142,7 @@ class AppUpdateTest {
     @Test
     fun aBadRepoNameIsRejectedUpFront() {
         try {
-            AppUpdater("not a repo", "tok", FakeHttp { HttpResponse(200, ByteArray(0)) })
+            AppUpdater("not a repo", FakeHttp { HttpResponse(200, ByteArray(0)) })
             fail("expected IllegalArgumentException")
         } catch (e: IllegalArgumentException) {
             assertTrue(e.message!!.contains("owner/name"))

@@ -14,6 +14,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,7 +23,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aliven.cyclocomp.core.ReleaseInfo
@@ -45,18 +45,14 @@ fun UpdateScreen(onBack: () -> Unit) {
     val installed = remember { ApkInstaller.installedVersionName(context) }
 
     var repo by remember { mutableStateOf(UpdateSettings.repo(context)) }
-    var token by remember { mutableStateOf("") }
-    var hasToken by remember { mutableStateOf(UpdateSettings.hasToken(context)) }
+    // Earlier versions kept a read-only token; it is not used any more, so erase it.
+    LaunchedEffect(Unit) { UpdateSettings.forgetOldToken(context) }
     var latest by remember { mutableStateOf<ReleaseInfo?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var readyToInstall by remember { mutableStateOf(false) }
 
-    val save = {
-        UpdateSettings.save(context, repo, token)
-        token = ""
-        hasToken = UpdateSettings.hasToken(context)
-    }
+    val save = { UpdateSettings.save(context, repo) }
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
@@ -68,21 +64,14 @@ fun UpdateScreen(onBack: () -> Unit) {
         }
         Text("Installed version: ${installed ?: "unknown"}", fontSize = 16.sp)
         Text(
-            "Looks for a newer release in the app's repository on GitHub. The repository is private, so a " +
-                "separate read-only token is needed: a fine-grained token limited to that one repository with " +
-                "Contents: read-only. It is stored encrypted on this phone.",
+            "Looks for a newer release in the app's public repository on GitHub. No token or login is needed. " +
+                "The download is checked against its published checksum and signing key before it is installed.",
             fontSize = 14.sp,
         )
         OutlinedTextField(
             value = repo, onValueChange = { repo = it }, singleLine = true,
             label = { Text("App repo (owner/name)") }, modifier = Modifier.fillMaxWidth(),
             isError = repo.isNotBlank() && !RepoPaths.isValidSlug(repo.trim()),
-        )
-        OutlinedTextField(
-            value = token, onValueChange = { token = it }, singleLine = true,
-            label = { Text(if (hasToken) "Update token (saved — type to replace)" else "Update token (read-only)") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
         )
 
         Button(
@@ -136,12 +125,6 @@ fun UpdateScreen(onBack: () -> Unit) {
         }
 
         status?.let { Text(it) }
-
-        if (hasToken) {
-            TextButton(onClick = { UpdateSettings.clearToken(context); hasToken = false; status = "Update token removed." }) {
-                Text("Remove saved update token")
-            }
-        }
     }
 }
 
@@ -149,9 +132,8 @@ private const val READY = "Downloaded and verified."
 
 /** Returns the newest release (or null) and a message for the screen. */
 private fun checkLatest(context: android.content.Context): Pair<ReleaseInfo?, String?> {
-    val token = UpdateSettings.token(context) ?: return null to "Enter the update token first."
     return try {
-        val updater = AppUpdater(UpdateSettings.repo(context), token, UrlConnectionHttp())
+        val updater = AppUpdater(UpdateSettings.repo(context), UrlConnectionHttp())
         val release = updater.latest()
         if (release == null) null to "No release with an APK has been published yet."
         else release to null
@@ -162,9 +144,8 @@ private fun checkLatest(context: android.content.Context): Pair<ReleaseInfo?, St
 
 /** Downloads the APK, checks its size, checksum and signer. Returns [READY] or an explanation. */
 private fun downloadAndVerify(context: android.content.Context, release: ReleaseInfo, onProgress: (Long) -> Unit): String {
-    val token = UpdateSettings.token(context) ?: return "Enter the update token first."
     return try {
-        val updater = AppUpdater(UpdateSettings.repo(context), token, UrlConnectionHttp())
+        val updater = AppUpdater(UpdateSettings.repo(context), UrlConnectionHttp())
         val file = ApkInstaller.updateFile(context, release.version.toString())
         // Keep only the APK being downloaded; older ones are just taking up space.
         file.parentFile?.listFiles()?.forEach { if (it.extension == "apk") it.delete() }
