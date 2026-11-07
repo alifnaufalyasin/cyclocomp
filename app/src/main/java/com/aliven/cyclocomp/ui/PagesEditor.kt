@@ -41,6 +41,7 @@ fun PagesEditor(initial: List<List<DataField>>, onSave: (List<List<DataField>>) 
     val tileUrlBad = tileUrl.isNotBlank() && !TileTemplate.isValid(tileUrl)
     var osrmUrl by remember { mutableStateOf(NavSettings.osrmUrl(context)) }
     val osrmBad = osrmUrl.isNotBlank() && OsrmAddress.normalize(osrmUrl) == null
+    var avoidToll by remember { mutableStateOf(NavSettings.avoidToll(context)) }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -50,6 +51,7 @@ fun PagesEditor(initial: List<List<DataField>>, onSave: (List<List<DataField>>) 
                 onClick = {
                     MapSettings.save(context, showMap, tileUrl)
                     NavSettings.saveOsrmUrl(context, OsrmAddress.normalize(osrmUrl) ?: "")
+                    NavSettings.saveAvoidToll(context, avoidToll)
                     onSave(pages.filter { it.isNotEmpty() }.ifEmpty { Pages.DEFAULT })
                 },
             ) { Text("Save") }
@@ -80,12 +82,16 @@ fun PagesEditor(initial: List<List<DataField>>, onSave: (List<List<DataField>>) 
             supportingText = {
                 Text(
                     if (osrmBad) "Needs an https:// address"
-                    else "Long-press the map to pick a destination. Use a server built with the bicycle profile for cycling routes."
+                    else "Long-press the map to pick a destination. A bicycle profile gives the best cycling routes."
                 )
             },
             isError = osrmBad,
             modifier = Modifier.fillMaxWidth(),
         )
+        Row(Modifier.fillMaxWidth().clickable { avoidToll = !avoidToll }, verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = avoidToll, onCheckedChange = { avoidToll = it })
+            Text("Avoid toll roads (for a motorcycle or car routing profile)")
+        }
 
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(pages) { pageIndex, page ->

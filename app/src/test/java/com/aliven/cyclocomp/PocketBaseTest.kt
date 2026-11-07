@@ -5,6 +5,7 @@ import com.aliven.cyclocomp.sync.Http
 import com.aliven.cyclocomp.sync.HttpResponse
 import com.aliven.cyclocomp.sync.JwtExpiry
 import com.aliven.cyclocomp.sync.Multipart
+import com.aliven.cyclocomp.sync.PasswordRules
 import com.aliven.cyclocomp.sync.PbSession
 import com.aliven.cyclocomp.sync.PocketBaseAuth
 import com.aliven.cyclocomp.sync.PocketBaseStore
@@ -33,6 +34,7 @@ private class FakeServer : Http {
     var refreshReply: (() -> HttpResponse)? = null
     var loginOk = Pair("a@example.org", "right-password")
     var failNetwork = false
+    var loginCount = 0
 
     private fun json(code: Int, o: JSONObject) = HttpResponse(code, o.toString().toByteArray())
 
@@ -48,8 +50,9 @@ private class FakeServer : Http {
         if (path == "/api/collections/users/auth-with-password") {
             val o = JSONObject(String(body!!))
             return if (o.getString("identity") == loginOk.first && o.getString("password") == loginOk.second) {
-                json(200, JSONObject().put("token", "tok-login").put("record", JSONObject().put("id", "u1").put("email", loginOk.first)))
-                    .also { validTokens.add("tok-login") }
+                val token = "tok-login-${++loginCount}"
+                validTokens.add(token)
+                json(200, JSONObject().put("token", token).put("record", JSONObject().put("id", "u1").put("email", loginOk.first)))
             } else json(400, JSONObject().put("message", "Failed to authenticate."))
         }
         if (headers["Authorization"] !in validTokens) return json(401, JSONObject().put("message", "The request requires valid record authorization token."))
@@ -58,6 +61,24 @@ private class FakeServer : Http {
             path == "/api/collections/users/auth-refresh" -> refreshReply?.invoke() ?: json(
                 200, JSONObject().put("token", "tok-refreshed").put("record", JSONObject().put("id", "u1").put("email", "a@example.org")),
             ).also { validTokens.add("tok-refreshed") }
+
+            path.startsWith("/api/collections/users/records/") && method == "PATCH" -> {
+                // Like the real server: the current password is required, and a new one must be 8-72 long.
+                val o = JSONObject(String(body!!))
+                if (o.optString("oldPassword") != loginOk.second) {
+                    json(400, JSONObject().put("message", "Failed to update record.").put(
+                        "data", JSONObject().put("oldPassword", JSONObject().put("message", "Missing or invalid old password.")),
+                    ))
+                } else if (o.optString("password").length !in 8..72) {
+                    json(400, JSONObject().put("message", "Failed to update record.").put(
+                        "data", JSONObject().put("password", JSONObject().put("message", "The length must be between 8 and 72.")),
+                    ))
+                } else {
+                    loginOk = Pair(loginOk.first, o.getString("password"))
+                    validTokens.clear() // every session of the account ends when the password changes
+                    json(200, JSONObject().put("id", "u1"))
+                }
+            }
 
             path.startsWith("/api/collections/users/records/") && method == "DELETE" -> HttpResponse(204, ByteArray(0))
 
@@ -318,6 +339,63 @@ class PocketBaseTest {
         val s = PocketBaseAuth("https://pb.test", server).login("a@example.org", "right-password")
         PocketBaseAuth("https://pb.test", server).deleteAccount(s)
         assertTrue(server.requests.any { it == "DELETE /api/collections/users/records/u1" })
+    }
+
+    @Test
+    fun changingThePasswordSignsInAgainWithTheNewOne() {
+        val server = FakeServer()
+        val auth = PocketBaseAuth("https://pb.test", server)
+        val old = auth.login("a@example.org", "right-password")
+        val fresh = auth.changePassword(old, "right-password", "brand-new-pass")
+        assertTrue(fresh.token != old.token)
+        assertTrue(old.token !in server.validTokens) // the old session ended with the old password
+        assertTrue(fresh.token in server.validTokens)
+        assertEquals("a@example.org", fresh.email)
+        auth.login("a@example.org", "brand-new-pass") // the new password works
+        try {
+            auth.login("a@example.org", "right-password") // the old one no longer does
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertEquals("Wrong email or password.", e.message)
+        }
+    }
+
+    @Test
+    fun aWrongCurrentPasswordIsExplainedAndNothingChanges() {
+        val server = FakeServer()
+        val auth = PocketBaseAuth("https://pb.test", server)
+        val s = auth.login("a@example.org", "right-password")
+        try {
+            auth.changePassword(s, "guess", "brand-new-pass")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertEquals("Your current password is wrong.", e.message)
+        }
+        auth.login("a@example.org", "right-password") // still the old password
+        assertTrue(s.token in server.validTokens) // and the session was not ended
+    }
+
+    @Test
+    fun aNewPasswordTheServerRefusesIsExplained() {
+        val auth = PocketBaseAuth("https://pb.test", FakeServer())
+        val s = auth.login("a@example.org", "right-password")
+        try {
+            auth.changePassword(s, "right-password", "short")
+            fail("expected a failure")
+        } catch (e: StoreException) {
+            assertTrue(e.message!!, e.message!!.contains("did not accept the new password"))
+            assertTrue(e.message!!.contains("between 8 and 72"))
+        }
+    }
+
+    @Test
+    fun passwordRulesCatchProblemsBeforeAnythingIsSent() {
+        assertNull(PasswordRules.check("old-pass", "new-password", "new-password"))
+        assertTrue(PasswordRules.check("", "new-password", "new-password")!!.contains("current password"))
+        assertTrue(PasswordRules.check("old-pass", "short", "short")!!.contains("at least 8"))
+        assertTrue(PasswordRules.check("old-pass", "x".repeat(73), "x".repeat(73))!!.contains("at most 72"))
+        assertTrue(PasswordRules.check("old-pass", "new-password", "different1")!!.contains("do not match"))
+        assertTrue(PasswordRules.check("same-password", "same-password", "same-password")!!.contains("different"))
     }
 
     @Test

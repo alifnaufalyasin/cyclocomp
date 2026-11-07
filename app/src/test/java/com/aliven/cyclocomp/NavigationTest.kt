@@ -147,9 +147,11 @@ class NavigationTest {
 
     private class FakeHttp(private val reply: (String) -> HttpResponse) : Http {
         var lastUrl = ""
+        val urls = mutableListOf<String>()
         var lastHeaders: Map<String, String> = emptyMap()
         override fun request(method: String, url: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
             lastUrl = url
+            urls.add(url)
             lastHeaders = headers
             return reply(url)
         }
@@ -161,11 +163,46 @@ class NavigationTest {
         val r = OsrmClient("https://osrm.test/", http).route(LatLon(0.0, 108.0), LatLon(0.0, 108.01))
         assertEquals(
             "https://osrm.test/route/v1/bike/108.000000,0.000000;108.010000,0.000000" +
-                "?overview=full&geometries=geojson&steps=true&alternatives=false",
+                "?overview=full&geometries=geojson&steps=true&alternatives=false&exclude=toll",
             http.lastUrl,
         )
         assertEquals("cyclocomp", http.lastHeaders["User-Agent"])
         assertEquals(3, r.steps.size)
+    }
+
+    @Test
+    fun tollRoadsCanBeLeftInWhenTheUserTurnsAvoidingOff() {
+        val http = FakeHttp { HttpResponse(200, osrmJson.toByteArray()) }
+        OsrmClient("https://osrm.test", http).route(LatLon(0.0, 108.0), LatLon(0.0, 108.01), avoidToll = false)
+        assertEquals(1, http.urls.size)
+        assertFalse(http.lastUrl.contains("exclude"))
+    }
+
+    @Test
+    fun aServerThatDoesNotKnowTheExcludeOptionIsAskedAgainWithoutIt() {
+        // What a real server answers for an unsupported exclude class (seen on the user's own server).
+        val refused = """{"message":"Exclude flag combination is not supported.","code":"InvalidValue"}"""
+        val http = FakeHttp { url ->
+            if (url.contains("exclude=")) HttpResponse(400, refused.toByteArray()) else HttpResponse(200, osrmJson.toByteArray())
+        }
+        val r = OsrmClient("https://osrm.test", http).route(LatLon(0.0, 108.0), LatLon(0.0, 108.01))
+        assertEquals(2, http.urls.size)
+        assertTrue(http.urls[0].contains("&exclude=toll"))
+        assertFalse(http.urls[1].contains("exclude"))
+        assertEquals(3, r.steps.size)
+    }
+
+    @Test
+    fun otherBadRequestsAreNotRetriedAsIfExcludeWasTheProblem() {
+        val noRoute = """{"message":"Impossible route between points","code":"NoRoute"}"""
+        val http = FakeHttp { HttpResponse(400, noRoute.toByteArray()) }
+        try {
+            OsrmClient("https://osrm.test", http).route(LatLon(0.0, 108.0), LatLon(0.0, 108.01))
+            fail("expected a failure")
+        } catch (e: NavException) {
+            assertTrue(e.message!!.contains("Impossible route"))
+        }
+        assertEquals(1, http.urls.size)
     }
 
     @Test
