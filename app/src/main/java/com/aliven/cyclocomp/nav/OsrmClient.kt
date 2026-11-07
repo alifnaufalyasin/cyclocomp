@@ -37,6 +37,13 @@ object NavSettings {
         prefs(context).edit().putBoolean("avoid_toll", avoid).apply()
     }
 
+    /** Spoken turn directions during navigation. On by default. */
+    fun voiceCues(context: Context): Boolean = prefs(context).getBoolean("voice_cues", true)
+
+    fun saveVoiceCues(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("voice_cues", on).apply()
+    }
+
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }
 
