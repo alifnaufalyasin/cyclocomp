@@ -143,12 +143,17 @@ object HuaweiWorkoutParser {
             }
 
             if (lower == "aerobic training stress") {
-                // The level word ("Maintained") and the number are separate rows after the label.
+                // The number and the level word ("Maintained", "Recovery") are either on separate rows
+                // or side by side on one row ("1.8 | Recovery"), so look at every cell.
                 for (r in rows.subList(i + 1, minOf(rows.size, i + 4))) {
                     if (r.text.lowercase() == "recovery time") break
-                    val n = NUMBER_ONLY.find(r.text)
-                    if (n != null) w = w.copy(aerobicStress = parseNumber(n.groupValues[1]))
-                    else if (r.text.all { it.isLetter() || it == ' ' }) w = w.copy(stressLevel = r.text)
+                    for (c in r.cells) {
+                        val n = NUMBER_ONLY.find(c.text)
+                        if (n != null) w = w.copy(aerobicStress = parseNumber(n.groupValues[1]))
+                        else if (c.text.isNotBlank() && c.text.all { it.isLetter() || it == ' ' }) {
+                            w = w.copy(stressLevel = c.text)
+                        }
+                    }
                 }
             }
             if (lower == "recovery time") {
@@ -234,6 +239,8 @@ object HuaweiWorkoutParser {
 
     /** `23 min`, `1 h 5 min`, `1h05min` -> minutes. */
     fun parseMinutes(text: String): Int? {
+        // "<1 min" means less than a minute, not one minute.
+        if (text.contains('<') && text.contains("min", ignoreCase = true)) return 0
         val m = Regex("""(?:(\d+)\s*h)?\s*(\d+)\s*min""", RegexOption.IGNORE_CASE).find(text) ?: return null
         return (m.groupValues[1].toIntOrNull() ?: 0) * 60 + m.groupValues[2].toInt()
     }
