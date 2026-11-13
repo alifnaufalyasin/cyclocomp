@@ -1,6 +1,15 @@
 package com.aliven.cyclocomp.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,13 +52,39 @@ fun rememberSummary(file: File): RideSummary? {
 }
 
 @Composable
-fun HistoryScreen(rides: List<File>, onOpen: (File) -> Unit, onOpenProgress: () -> Unit, onBack: () -> Unit) {
+fun HistoryScreen(
+    rides: List<File>,
+    onOpen: (File) -> Unit,
+    onOpenProgress: () -> Unit,
+    onBack: () -> Unit,
+    onRidesChanged: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var importing by remember { mutableStateOf(false) }
+    var importLines by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Any file type is offered: Android often reports .gpx files as generic binary data.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            importing = true
+            scope.launch {
+                importLines = withContext(Dispatchers.IO) { importGpxFiles(context, uris) }
+                importing = false
+                onRidesChanged()
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onBack) { Text("Back") }
             Text("Ride history", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             TextButton(onClick = onOpenProgress) { Text("Progress") }
         }
+        OutlinedButton(
+            onClick = { picker.launch(arrayOf("*/*")) }, enabled = !importing, modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (importing) "Importing…" else "Import GPX files (e.g. from Strava)") }
+        importLines.forEach { Text(it, fontSize = 13.sp) }
         if (rides.isEmpty()) {
             Text("No rides yet. Record one from the ride screen.")
         } else {

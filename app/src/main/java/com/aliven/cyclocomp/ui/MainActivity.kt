@@ -92,6 +92,7 @@ private fun AppNav() {
             onOpen = { screen = Screen.Detail(it.absolutePath) },
             onOpenProgress = { screen = Screen.Progress },
             onBack = { screen = Screen.Ride },
+            onRidesChanged = { rides = RideRecorder.rides() },
         )
         Screen.Progress -> ProgressScreen(
             onBack = { screen = Screen.History },
